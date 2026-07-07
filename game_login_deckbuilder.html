@@ -98,6 +98,8 @@
   .cell.move{outline:3px solid var(--move);outline-offset:-3px;cursor:pointer}
   .cell.cap{outline:3px solid var(--cap);outline-offset:-3px;cursor:pointer}
   .cell.threat::after{content:"";position:absolute;inset:0;background:var(--threat);opacity:.5;pointer-events:none}
+  .cell.enemyFrom{box-shadow:inset 0 0 0 3px #ffb35c}
+  .cell.enemyTo{box-shadow:inset 0 0 0 4px #ff6b4a;background:#3a2430}
   .cell.selected{outline:3px solid var(--sel);outline-offset:-3px}
   .coord{position:absolute;top:2px;left:3px;font-size:9px;color:#4a5170}
   .piece{width:calc(var(--cell-size)*.78);height:calc(var(--cell-size)*.78);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,.4);cursor:pointer;position:relative;z-index:2}
@@ -465,7 +467,7 @@ const PLAYER_PAWN_DIR=-1,ENEMY_PAWN_DIR=1;
 const PROMOTION_CHOICES=['R','N','B'];
 
 let pieces=[],monsters=[];
-let state={turn:0,combats:0,combatTurns:0,phase:'player',selected:null,over:false,timer:null,monsterCursor:0,awaitingCombat:false};
+let state={turn:0,combats:0,combatTurns:0,phase:'player',selected:null,over:false,timer:null,monsterCursor:0,awaitingCombat:false,enemyAction:null};
 
 function buildFromLayout(){
   pieces=[];monsters=[];let pid=0,mid=0;
@@ -479,6 +481,7 @@ const monAt=(r,c)=>monsters.find(m=>m.alive&&m.r===r&&m.c===c);
 const occupied=(r,c)=>pieceAt(r,c)||monAt(r,c);
 const boss=()=>monsters.find(m=>m.alive&&m.type==='X');
 const pKing=()=>pieces.find(p=>p.alive&&p.kind==='K');
+const cellKey=(r,c)=>r+','+c;
 
 function pieceTargets(p){
   const moves=[],caps=[];
@@ -519,6 +522,8 @@ function render(){
     if(isThreatened(tm,r,c))cell.classList.add('threat');
     if(inList(hl.moves,r,c))cell.classList.add('move');
     if(inList(hl.caps,r,c))cell.classList.add('cap');
+    if(state.enemyAction?.from===cellKey(r,c))cell.classList.add('enemyFrom');
+    if(state.enemyAction?.to===cellKey(r,c))cell.classList.add('enemyTo');
     const co=document.createElement('div');co.className='coord';co.textContent=coordName(r,c);cell.appendChild(co);
     const p=pieceAt(r,c),m=monAt(r,c);
     if(p){const el=document.createElement('div');el.className='piece p';
@@ -550,13 +555,14 @@ function onCellClick(r,c){if(state.over||state.phase!=='player'||!state.selected
 function movePiece(p,r,c){p.r=r;p.c=c;p.hasMoved=true;promotePlayerPawn(p);state.selected=null;}
 
 function endPlayerTurn(){if(state.over||state.awaitingCombat)return;
-  state.turn++;state.phase='monster';render();
-  state.timer=setTimeout(()=>{state.timer=null;monsterPhase();if(!state.awaitingCombat)afterMonster();},220);}
-function afterMonster(){if(state.over)return;state.phase='player';render();checkMate();}
+  state.turn++;state.phase='monster';state.enemyAction=null;render();
+  state.timer=setTimeout(()=>{state.timer=null;monsterPhase();if(!state.awaitingCombat){render();state.timer=setTimeout(()=>{state.timer=null;afterMonster();},650);}},220);}
+function afterMonster(){if(state.over)return;state.phase='player';render();}
 const cheby=(a,b,r,c)=>Math.max(Math.abs(a-r),Math.abs(b-c));
 
 function monsterPhase(){
   if(!monsters.length)return;
+  if(checkMate())return;
   for(let i=0;i<monsters.length;i++){
     const idx=(state.monsterCursor+i)%monsters.length;const m=monsters[idx];
     if(!m.alive||state.over||m.arch==='boss')continue;
@@ -567,11 +573,14 @@ function monsterPhase(){
     else if(m.arch==='escort')acted=escort(m);
     if(acted){state.monsterCursor=(idx+1)%monsters.length;return;}
   }
+  state.enemyAction={from:null,to:null,label:'상대가 움직일 수 없어 턴을 넘깁니다'};
 }
 function stepToward(m,tr,tc){let best=null,bd=cheby(m.r,m.c,tr,tc);
   for(const[dr,dc]of KING8){const r=m.r+dr,c=m.c+dc;if(!inb(r,c)||occupied(r,c))continue;const d=cheby(r,c,tr,tc);if(d<bd){bd=d;best=[r,c];}}
-  if(best){m.r=best[0];m.c=best[1];return true;}return false;}
+  if(best){moveMonster(m,best[0],best[1],`${m.name} 이동 ${coordName(best[0],best[1])}`);return true;}return false;}
 const adjacentTo=(m,r,c)=>cheby(m.r,m.c,r,c)===1;
+function markEnemyAction(fromR,fromC,toR,toC,label){state.enemyAction={from:fromR==null?null:cellKey(fromR,fromC),to:toR==null?null:cellKey(toR,toC),label};if(label)log(`<span class="t">상대 행동 — ${label}</span>`);}
+function moveMonster(m,r,c,label){const fr=m.r,fc=m.c;m.r=r;m.c=c;m.hasMoved=true;markEnemyAction(fr,fc,r,c,label);}
 function promotePlayerPawn(p){
   if(p.kind!=='P'||p.r!==0)return;
   const picked=(window.prompt('폰 승급: R(룩), N(나이트), B(비숍) 중 선택','R')||'R').trim().toUpperCase()[0];
@@ -588,27 +597,27 @@ function promoteEnemyPawn(m){
 function enemyPawn(m){
   for(const dc of [-1,1]){
     const r=m.r+ENEMY_PAWN_DIR,c=m.c+dc;const target=inb(r,c)&&pieceAt(r,c);
-    if(target){startCombat(target,m,{initiator:'monster',pawnCapture:true});return true;}
+    if(target){markEnemyAction(m.r,m.c,r,c,`${m.name} 공격 ${coordName(r,c)}`);startCombat(target,m,{initiator:'monster',pawnCapture:true});return true;}
   }
   const one=m.r+ENEMY_PAWN_DIR;
-  if(inb(one,m.c)&&!occupied(one,m.c)){m.r=one;m.hasMoved=true;promoteEnemyPawn(m);return true;}
+  if(inb(one,m.c)&&!occupied(one,m.c)){moveMonster(m,one,m.c,`${m.name} 이동 ${coordName(one,m.c)}`);promoteEnemyPawn(m);return true;}
   return false;
 }
 function hunter(m){const k=pKing();if(!k)return false;
-  if(adjacentTo(m,k.r,k.c)){startCombat(k,m,{initiator:'monster'});return true;}
+  if(adjacentTo(m,k.r,k.c)){markEnemyAction(m.r,m.c,k.r,k.c,`${m.name} 공격 ${coordName(k.r,k.c)}`);startCombat(k,m,{initiator:'monster'});return true;}
   let target=null,bd=99;
   for(const[dr,dc]of KING8){const r=m.r+dr,c=m.c+dc;if(!inb(r,c)||occupied(r,c))continue;if(cheby(r,c,k.r,k.c)===1){const d=cheby(m.r,m.c,r,c);if(d<bd){bd=d;target=[r,c];}}}
-  if(target){m.r=target[0];m.c=target[1];return true;}return stepToward(m,k.r,k.c);}
+  if(target){moveMonster(m,target[0],target[1],`${m.name} 이동 ${coordName(target[0],target[1])}`);return true;}return stepToward(m,k.r,k.c);}
 function interceptor(m){let near=null,nd=99;
   pieces.filter(p=>p.alive).forEach(p=>{const d=cheby(m.r,m.c,p.r,p.c);if(d<nd){nd=d;near=p;}});
-  if(!near)return false;if(adjacentTo(m,near.r,near.c)){startCombat(near,m,{initiator:'monster'});return true;}return stepToward(m,near.r,near.c);}
+  if(!near)return false;if(adjacentTo(m,near.r,near.c)){markEnemyAction(m.r,m.c,near.r,near.c,`${m.name} 공격 ${coordName(near.r,near.c)}`);startCombat(near,m,{initiator:'monster'});return true;}return stepToward(m,near.r,near.c);}
 function escort(m){const b=boss();if(!b)return interceptor(m);
   let victim=null;pieces.filter(p=>p.alive).forEach(p=>{if(cheby(b.r,b.c,p.r,p.c)<=1&&adjacentTo(m,p.r,p.c))victim=p;});
-  if(victim){startCombat(victim,m,{initiator:'monster'});return true;}
+  if(victim){markEnemyAction(m.r,m.c,victim.r,victim.c,`${m.name} 공격 ${coordName(victim.r,victim.c)}`);startCombat(victim,m,{initiator:'monster'});return true;}
   if(cheby(m.r,m.c,b.r,b.c)>1)return stepToward(m,b.r,b.c);return false;}
 
 function checkMate(){
-  const b=boss();if(!b||state.over||state.awaitingCombat)return;
+  const b=boss();if(!b||state.over||state.awaitingCombat)return false;
   const tm=threatMap();const curThreat=isThreatened(tm,b.r,b.c);
   const exits=[];for(const[dr,dc]of KING8){const r=b.r+dr,c=b.c+dc;if(inb(r,c)&&!occupied(r,c))exits.push([r,c]);}
   const safeExits=exits.filter(([r,c])=>!isThreatened(tm,r,c));
@@ -617,12 +626,15 @@ function checkMate(){
     const champs=pieces.filter(p=>p.alive&&pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c));
     const champ=champs.sort((a,b2)=>b2.hp-a.hp)[0]||pKing();
     log(`<span class="win">♛ 체크메이트!</span> 보스전 — 포위 ${siege}기 · 도전자 ${champ.kind} · 보너스 +${siege*CONFIG.SIEGE_BONUS.damagePerPiece} dmg`,'win');
-    startCombat(champ,b,{initiator:'siege',siege});return;
+    markEnemyAction(b.r,b.c,b.r,b.c,'보스킹 회피 불가 — 보스전 발동');
+    startCombat(champ,b,{initiator:'siege',siege});return true;
   }
   if(curThreat){log('<span class="t">체크 — 보스킹 회피</span>');
     if(safeExits.length){const attackers=pieces.filter(p=>p.alive&&pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c));
       let best=safeExits[0],bs=-1;safeExits.forEach(([r,c])=>{let s=99;attackers.forEach(a=>s=Math.min(s,cheby(r,c,a.r,a.c)));if(s>bs){bs=s;best=[r,c];}});
-      b.r=best[0];b.c=best[1];render();}}
+      moveMonster(b,best[0],best[1],`보스킹 회피 ${coordName(best[0],best[1])}`);}
+    return true;}
+  return false;
 }
 
 /* ---------- 카드 전투 ---------- */
@@ -638,7 +650,7 @@ function startCombat(piece,mon,opts){
     ally:{hp:piece.hp,max:piece.max,block:0,kind:piece.kind},
     enemy:{hp:mon.hp,max:mon.max,name:mon.name,script:monDef.script,step:0},
     adj:adjacentAllies(piece.r,piece.c),
-    energy:CONFIG.ENERGY_PER_TURN,draw:shuffle(playerDeckFlat()),discard:[],hand:[],weaken:0,turn:1,over:false};
+    energy:CONFIG.ENERGY_PER_TURN,draw:shuffle(playerDeckFlat()),discard:[],hand:[],weaken:0,vulnerable:0,bleed:0,turn:1,over:false};
   cLogEl.innerHTML='';
   const initTxt=opts.initiator==='player'?'플레이어 공격':(opts.initiator==='siege'?'보스전(포위)':'상대 공격(수비)');
   cLog(`<span class="sys">— ${initTxt}: ${CB.ally.kind}(${CB.ally.hp}) vs ${CB.enemy.name}(${CB.enemy.hp}) · 인접 아군 ${CB.adj}기 —</span>`);
@@ -648,16 +660,43 @@ function startCombat(piece,mon,opts){
   if(CB.enemy.hp<=0){cbEnd(true);return;}
   cbStartTurn();
 }
-function cbStartTurn(){CB.ally.block=0;CB.energy=CONFIG.ENERGY_PER_TURN;cbDraw(CONFIG.HAND_SIZE);cbRender();}
+function cbStartTurn(){
+  CB.ally.block=0;CB.energy=CONFIG.ENERGY_PER_TURN;
+  if(CB.bleed>0){
+    CB.enemy.hp=Math.max(0,CB.enemy.hp-CB.bleed);
+    cLog(`<span class="dmg">균열: ${CB.bleed} 지속 피해 → ${CB.enemy.name} HP ${CB.enemy.hp}</span>`);
+    cbFloat('enemy',`-${CB.bleed}`);
+    if(CB.enemy.hp<=0){cbEnd(true);return;}
+  }
+  cbDraw(CONFIG.HAND_SIZE);cbRender();
+}
 function cbDraw(n){for(let i=0;i<n;i++){if(CB.draw.length===0){if(CB.discard.length===0)break;CB.draw=shuffle(CB.discard);CB.discard=[];cLog('<span class="sys">버림 더미 리셋</span>');}CB.hand.push(CB.draw.pop());}}
 const cbAction=()=>CB.enemy.script[CB.enemy.step%CB.enemy.script.length];
-function cbCardVal(card){if(card.kind==='damage_adj'||card.kind==='block_adj')return card.per*CB.adj;return card.value;}
+function kingDistance(){const k=pKing();return k?cheby(CB.piece.r,CB.piece.c,k.r,k.c):99;}
+function cbCardVal(card){
+  if(card.kind==='damage_adj'||card.kind==='block_adj')return card.per*CB.adj;
+  if(card.kind==='phalanx')return card.block+card.per*CB.adj;
+  if(card.kind==='isolated_damage')return CB.adj===0?card.solo:card.value;
+  if(card.kind==='piece_damage')return CB.ally.kind===card.piece?card.value+card.bonus:card.value;
+  if(card.kind==='king_block')return kingDistance()<=2?card.near:card.base;
+  if(card.kind==='allout')return CB.energy*card.per;
+  return card.value||0;
+}
 function cbPlay(idx){if(CB.over)return;const id=CB.hand[idx],card=CONFIG.CARDS[id];if(CB.energy<card.cost)return;CB.energy-=card.cost;const val=cbCardVal(card);
   if(card.kind==='damage'||card.kind==='damage_adj')cbDeal(val,card.name);
+  else if(card.kind==='damage_draw'){cbDeal(val,card.name);cbDraw(card.draw||0);cLog(`<span class="sys">${card.name}: 카드 ${card.draw||0}장 뽑기</span>`);}
+  else if(card.kind==='draw'){cbDraw(card.draw||0);cLog(`<span class="sys">${card.name}: 카드 ${card.draw||0}장 뽑기</span>`);}
+  else if(card.kind==='energy'){CB.energy+=card.energy||0;cLog(`<span class="sys">${card.name}: 에너지 +${card.energy||0}</span>`);}
   else if(card.kind==='damage_weaken'){cbDeal(val,card.name);CB.weaken+=card.weaken;cLog(`<span class="en">${card.name}: 적 다음 공격 -${card.weaken}</span>`);}
-  else if(card.kind==='block'||card.kind==='block_adj'){CB.ally.block+=val;cLog(`<span class="blk">${card.name}: 방어 +${val} (누적 ${CB.ally.block})</span>`);}
+  else if(card.kind==='damage_vulnerable'){cbDeal(val,card.name);CB.vulnerable+=card.vulnerable||0;cLog(`<span class="dmg">${card.name}: 다음 피해 +${card.vulnerable||0}</span>`);}
+  else if(card.kind==='weaken'){CB.weaken+=card.weaken||0;cLog(`<span class="en">${card.name}: 적 다음 공격 -${card.weaken||0}</span>`);}
+  else if(card.kind==='block'||card.kind==='block_adj'||card.kind==='phalanx'||card.kind==='king_block'){CB.ally.block+=val;cLog(`<span class="blk">${card.name}: 방어 +${val} (누적 ${CB.ally.block})</span>`);}
+  else if(card.kind==='heal'){const before=CB.ally.hp;CB.ally.hp=Math.min(CB.ally.max,CB.ally.hp+val);cLog(`<span class="blk">${card.name}: HP ${CB.ally.hp-before} 회복 → ${CB.ally.hp}</span>`);}
+  else if(card.kind==='isolated_damage'||card.kind==='piece_damage')cbDeal(val,card.name);
+  else if(card.kind==='bleed'){cbDeal(val,card.name);CB.bleed+=card.bleed||0;cLog(`<span class="dmg">${card.name}: 지속 피해 ${CB.bleed}</span>`);}
+  else if(card.kind==='allout'){cbDeal(val,card.name);CB.energy=0;}
   CB.hand.splice(idx,1);CB.discard.push(id);if(CB.enemy.hp<=0){cbEnd(true);return;}cbRender();}
-function cbDeal(dmg,src){CB.enemy.hp=Math.max(0,CB.enemy.hp-dmg);cLog(`<span class="dmg">${src}: ${dmg} 피해 → ${CB.enemy.name} HP ${CB.enemy.hp}</span>`);cbFloat('enemy',`-${dmg}`);}
+function cbDeal(dmg,src){const bonus=CB.vulnerable||0;if(bonus>0){dmg+=bonus;CB.vulnerable=0;}CB.enemy.hp=Math.max(0,CB.enemy.hp-dmg);cLog(`<span class="dmg">${src}: ${dmg} 피해${bonus?` (취약 +${bonus})`:''} → ${CB.enemy.name} HP ${CB.enemy.hp}</span>`);cbFloat('enemy',`-${dmg}`);}
 function cbEndTurn(){if(CB.over)return;CB.discard.push(...CB.hand);CB.hand=[];cbRender();cbEnemyTurn();}
 function cbEnemyTurn(){if(CB.over)return;const act=cbAction();
   if(act.atk!=null){let dmg=Math.max(0,act.atk-CB.weaken);CB.weaken=0;const blk=Math.min(CB.ally.block,dmg),thr=dmg-blk;CB.ally.block-=blk;CB.ally.hp=Math.max(0,CB.ally.hp-thr);
@@ -693,14 +732,14 @@ function cbRender(){
   document.getElementById('c-enemy-hp').style.width=(100*e.hp/e.max)+'%';
   document.getElementById('c-enemy-hptext').textContent=`${e.hp} / ${e.max} ❤`;
   const act=cbAction();const shown=Math.max(0,(act.atk||0)-(CB.weaken||0));
-  document.getElementById('c-intent').innerHTML=CB.over?'–':`⚔ 공격 ${shown}<small>다음 행동 예고${CB.weaken?` · 견제 -${CB.weaken}`:''}</small>`;
+  document.getElementById('c-intent').innerHTML=CB.over?'–':`⚔ 공격 ${shown}<small>다음 행동 예고${CB.weaken?` · 견제 -${CB.weaken}`:''}${CB.vulnerable?` · 다음 피해 +${CB.vulnerable}`:''}${CB.bleed?` · 지속 ${CB.bleed}`:''}</small>`;
   document.getElementById('c-energy').textContent=`⚡ ${CB.energy} / ${CONFIG.ENERGY_PER_TURN}`;
   document.getElementById('c-piles').textContent=`뽑을 ${CB.draw.length} · 버림 ${CB.discard.length}`;
   const h=document.getElementById('c-hand');h.innerHTML='';
   CB.hand.forEach((id,idx)=>{const card=CONFIG.CARDS[id];const val=cbCardVal(card);const ok=CB.energy>=card.cost&&!CB.over;
     const el=document.createElement('div');el.className='cardc'+(ok?'':' disabled');
-    let dyn=(card.kind==='damage_adj'||card.kind==='block_adj')?` <b>(현재 ${val})</b>`:'';
-    el.innerHTML=`<span class="cost">${card.cost}</span><div class="cname">${card.name}</div><div class="cdesc">${card.desc}${dyn}</div><div class="ctag">${card.kind.includes('block')?'🛡 방어':'🗡 공격'}</div>`;
+    let dyn=['damage_adj','block_adj','phalanx','isolated_damage','piece_damage','king_block','allout'].includes(card.kind)?` <b>(현재 ${val})</b>`:'';
+    el.innerHTML=`<span class="cost">${card.cost}</span><div class="cname">${card.name}</div>${cardMetaHtml(card)}<div class="cdesc">${card.desc}${dyn}</div><div class="ctag">${card.type||'전술'}</div>`;
     if(ok)el.onclick=()=>cbPlay(idx);h.appendChild(el);});
 }
 function cbFloat(side,txt){const f=document.querySelector('.fighter.'+side);if(!f)return;const d=document.createElement('div');d.className='float';d.style.color='var(--dmg)';d.textContent=txt;f.appendChild(d);setTimeout(()=>d.remove(),900);}
@@ -718,7 +757,7 @@ function log(html){const d=document.createElement('div');d.innerHTML=html;logEl.
 
 function initGame(){
   if(state.timer)clearTimeout(state.timer);
-  state={turn:0,combats:0,combatTurns:0,phase:'player',selected:null,over:false,timer:null,monsterCursor:0,awaitingCombat:false};
+  state={turn:0,combats:0,combatTurns:0,phase:'player',selected:null,over:false,timer:null,monsterCursor:0,awaitingCombat:false,enemyAction:null};
   document.getElementById('banner').style.display='none';
   document.getElementById('combat').style.display='none';
   logEl.innerHTML='';CB=null;

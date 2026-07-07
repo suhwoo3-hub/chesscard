@@ -29,6 +29,8 @@
   .cell.move{outline:3px solid var(--move);outline-offset:-3px;cursor:pointer}
   .cell.cap{outline:3px solid var(--cap);outline-offset:-3px;cursor:pointer}
   .cell.threat::after{content:"";position:absolute;inset:0;background:var(--threat);opacity:.5;pointer-events:none}
+  .cell.enemyFrom{box-shadow:inset 0 0 0 3px #ffb35c}
+  .cell.enemyTo{box-shadow:inset 0 0 0 4px #ff6b4a;background:#3a2430}
   .cell.selected{outline:3px solid var(--sel);outline-offset:-3px}
   .coord{position:absolute;top:2px;left:3px;font-size:9px;color:#4a5170}
   .piece{width:calc(var(--cell-size) * .78);height:calc(var(--cell-size) * .78);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,.4);cursor:pointer;position:relative;z-index:2}
@@ -218,7 +220,7 @@ const PROMOTION_CHOICES=['R','N','B'];
    상태
    ============================================================ */
 let pieces=[], monsters=[];
-let state={ turn:0, combats:0, combatTurns:0, phase:'player', selected:null, over:false, timer:null, monsterCursor:0, awaitingCombat:false };
+let state={ turn:0, combats:0, combatTurns:0, phase:'player', selected:null, over:false, timer:null, monsterCursor:0, awaitingCombat:false, enemyAction:null };
 
 function buildFromLayout(){
   pieces=[]; monsters=[]; let pid=0, mid=0;
@@ -232,6 +234,7 @@ const monAt=(r,c)=>monsters.find(m=>m.alive&&m.r===r&&m.c===c);
 const occupied=(r,c)=>pieceAt(r,c)||monAt(r,c);
 const boss=()=>monsters.find(m=>m.alive&&m.type==='X');
 const pKing=()=>pieces.find(p=>p.alive&&p.kind==='K');
+const cellKey=(r,c)=>r+','+c;
 
 /* ---------- 이동/캡처 ---------- */
 function pieceTargets(p){
@@ -286,6 +289,8 @@ function render(){
     if(isThreatened(tm,r,c))cell.classList.add('threat');
     if(inList(hl.moves,r,c))cell.classList.add('move');
     if(inList(hl.caps,r,c))cell.classList.add('cap');
+    if(state.enemyAction?.from===cellKey(r,c))cell.classList.add('enemyFrom');
+    if(state.enemyAction?.to===cellKey(r,c))cell.classList.add('enemyTo');
     const co=document.createElement('div'); co.className='coord'; co.textContent=coordName(r,c); cell.appendChild(co);
     const p=pieceAt(r,c), m=monAt(r,c);
     if(p){
@@ -314,7 +319,10 @@ function updatePanel(){
   document.getElementById('s-ally').textContent=pieces.filter(p=>p.alive).length;
   document.getElementById('s-siege').textContent=siegeCount();
   document.getElementById('phase').textContent=
-    state.over?'게임 종료':(state.awaitingCombat?'전투 중…':(state.selected?`${state.selected.kind} 선택됨 — 목적지 클릭`:'플레이어 차례 — 기물을 선택하세요'));
+    state.over?'게임 종료':
+    (state.awaitingCombat?'전투 중…':
+    (state.phase==='monster'?(state.enemyAction?.label||'상대 차례 — 이동을 계산 중…'):
+    (state.selected?`${state.selected.kind} 선택됨 — 목적지 클릭`:'플레이어 차례 — 기물을 선택하세요')));
   document.getElementById('flag').innerHTML=
     '⚑ 통합본: 몬스터 캡처=카드 전투. 전투 후 <b>양측 HP가 보드로 이월</b>. 체크메이트 시 포위 기물 수만큼 보스전 시작 데미지 보너스(+'+CONFIG.SIEGE_BONUS.damagePerPiece+'/기).';
 }
@@ -336,14 +344,15 @@ function movePiece(p,r,c){ p.r=r;p.c=c;p.hasMoved=true; promotePlayerPawn(p); st
    ============================================================ */
 function endPlayerTurn(){
   if(state.over||state.awaitingCombat)return;
-  state.turn++; state.phase='monster'; render();
-  state.timer=setTimeout(()=>{ state.timer=null; monsterPhase(); if(!state.awaitingCombat) afterMonster(); },220);
+  state.turn++; state.phase='monster'; state.enemyAction=null; render();
+  state.timer=setTimeout(()=>{ state.timer=null; monsterPhase(); if(!state.awaitingCombat){ render(); state.timer=setTimeout(()=>{state.timer=null;afterMonster();},650); } },220);
 }
-function afterMonster(){ if(state.over)return; state.phase='player'; render(); checkMate(); }
+function afterMonster(){ if(state.over)return; state.phase='player'; render(); }
 const cheby=(a,b,r,c)=>Math.max(Math.abs(a-r),Math.abs(b-c));
 
 function monsterPhase(){
   if(!monsters.length)return;
+  if(checkMate())return;
   // 한 턴에 상대 1기만 행동. 단, 지목된 기물이 '할 게 없으면' 행동 가능한 다음 기물로 건너뜀.
   for(let i=0;i<monsters.length;i++){
     const idx=(state.monsterCursor+i)%monsters.length;
@@ -358,15 +367,25 @@ function monsterPhase(){
     // acted=false → 다음 기물 시도(건너뛰기)
   }
   // 여기까지 왔으면 움직일 수 있는 상대가 아무도 없음 → 이번 턴은 진짜 패스
+  state.enemyAction={from:null,to:null,label:'상대가 움직일 수 없어 턴을 넘깁니다'};
 }
 // 이동 성공 시 true 반환
 function stepToward(m,tr,tc){ let best=null,bd=cheby(m.r,m.c,tr,tc);
   for(const[dr,dc]of KING8){const r=m.r+dr,c=m.c+dc; if(!inb(r,c)||occupied(r,c))continue;
     const d=cheby(r,c,tr,tc); if(d<bd){bd=d;best=[r,c];}}
-  if(best){m.r=best[0];m.c=best[1]; return true;} return false; }
+  if(best){moveMonster(m,best[0],best[1],`${m.name} 이동 ${coordName(best[0],best[1])}`); return true;} return false; }
 const adjacentTo=(m,r,c)=>cheby(m.r,m.c,r,c)===1;
 
 // 각 AI: 행동(이동/전투)했으면 true, 할 게 없으면 false
+function markEnemyAction(fromR,fromC,toR,toC,label){
+  state.enemyAction={from:fromR==null?null:cellKey(fromR,fromC),to:toR==null?null:cellKey(toR,toC),label};
+  if(label) log(`<span class="t">상대 행동 — ${label}</span>`);
+}
+function moveMonster(m,r,c,label){
+  const fr=m.r,fc=m.c;
+  m.r=r;m.c=c;m.hasMoved=true;
+  markEnemyAction(fr,fc,r,c,label);
+}
 function promotePlayerPawn(p){
   if(p.kind!=='P'||p.r!==0)return;
   const picked=(window.prompt('폰 승급: R(룩), N(나이트), B(비숍) 중 선택','R')||'R').trim().toUpperCase()[0];
@@ -384,32 +403,32 @@ function enemyPawn(m){
   for(const dc of [-1,1]){
     const r=m.r+ENEMY_PAWN_DIR,c=m.c+dc;
     const target=inb(r,c)&&pieceAt(r,c);
-    if(target){ startCombat(target,m,{initiator:'monster', pawnCapture:true}); return true; }
+    if(target){ markEnemyAction(m.r,m.c,r,c,`${m.name} 공격 ${coordName(r,c)}`); startCombat(target,m,{initiator:'monster', pawnCapture:true}); return true; }
   }
   const one=m.r+ENEMY_PAWN_DIR;
-  if(inb(one,m.c)&&!occupied(one,m.c)){m.r=one;m.hasMoved=true;promoteEnemyPawn(m);return true;}
+  if(inb(one,m.c)&&!occupied(one,m.c)){moveMonster(m,one,m.c,`${m.name} 이동 ${coordName(one,m.c)}`);promoteEnemyPawn(m);return true;}
   return false;
 }
 function hunter(m){ const k=pKing(); if(!k)return false;
-  if(adjacentTo(m,k.r,k.c)){ startCombat(k,m,{initiator:'monster'}); return true; }
+  if(adjacentTo(m,k.r,k.c)){ markEnemyAction(m.r,m.c,k.r,k.c,`${m.name} 공격 ${coordName(k.r,k.c)}`); startCombat(k,m,{initiator:'monster'}); return true; }
   let target=null,bd=99;
   for(const[dr,dc]of KING8){const r=m.r+dr,c=m.c+dc; if(!inb(r,c)||occupied(r,c))continue;
     if(cheby(r,c,k.r,k.c)===1){const d=cheby(m.r,m.c,r,c); if(d<bd){bd=d;target=[r,c];}}}
-  if(target){m.r=target[0];m.c=target[1];return true;} return stepToward(m,k.r,k.c); }
+  if(target){moveMonster(m,target[0],target[1],`${m.name} 이동 ${coordName(target[0],target[1])}`);return true;} return stepToward(m,k.r,k.c); }
 function interceptor(m){ let near=null,nd=99;
   pieces.filter(p=>p.alive).forEach(p=>{const d=cheby(m.r,m.c,p.r,p.c); if(d<nd){nd=d;near=p;}});
   if(!near)return false;
-  if(adjacentTo(m,near.r,near.c)){ startCombat(near,m,{initiator:'monster'}); return true; }
+  if(adjacentTo(m,near.r,near.c)){ markEnemyAction(m.r,m.c,near.r,near.c,`${m.name} 공격 ${coordName(near.r,near.c)}`); startCombat(near,m,{initiator:'monster'}); return true; }
   return stepToward(m,near.r,near.c); }
 function escort(m){ const b=boss(); if(!b)return interceptor(m);
   let victim=null; pieces.filter(p=>p.alive).forEach(p=>{if(cheby(b.r,b.c,p.r,p.c)<=1&&adjacentTo(m,p.r,p.c))victim=p;});
-  if(victim){ startCombat(victim,m,{initiator:'monster'}); return true; }
+  if(victim){ markEnemyAction(m.r,m.c,victim.r,victim.c,`${m.name} 공격 ${coordName(victim.r,victim.c)}`); startCombat(victim,m,{initiator:'monster'}); return true; }
   if(cheby(m.r,m.c,b.r,b.c)>1)return stepToward(m,b.r,b.c);
   return false; }
 
 /* ---------- 체크메이트 & 보스 회피 ---------- */
 function checkMate(){
-  const b=boss(); if(!b||state.over||state.awaitingCombat)return;
+  const b=boss(); if(!b||state.over||state.awaitingCombat)return false;
   const tm=threatMap(); const curThreat=isThreatened(tm,b.r,b.c);
   const exits=[]; for(const[dr,dc]of KING8){const r=b.r+dr,c=b.c+dc; if(inb(r,c)&&!occupied(r,c))exits.push([r,c]);}
   const safeExits=exits.filter(([r,c])=>!isThreatened(tm,r,c));
@@ -419,15 +438,18 @@ function checkMate(){
     const challengers=pieces.filter(p=>p.alive&&pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c));
     const champ=challengers.sort((a,b2)=>b2.hp-a.hp)[0] || pKing();
     log(`<span class="win">♛ 체크메이트!</span> 보스전 발동 — 포위 ${siege}기 · 도전자 ${champ.kind} · 시작 보너스 +${siege*CONFIG.SIEGE_BONUS.damagePerPiece} dmg`,'win');
+    markEnemyAction(b.r,b.c,b.r,b.c,'보스킹 회피 불가 — 보스전 발동');
     startCombat(champ,b,{initiator:'siege', siege});
-    return;
+    return true;
   }
   if(curThreat){
     log('<span class="t">체크 — 보스킹 회피 이동</span>');
     if(safeExits.length){ const attackers=pieces.filter(p=>p.alive&&pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c));
       let best=safeExits[0],bs=-1; safeExits.forEach(([r,c])=>{let s=99; attackers.forEach(a=>s=Math.min(s,cheby(r,c,a.r,a.c))); if(s>bs){bs=s;best=[r,c];}});
-      b.r=best[0]; b.c=best[1]; render(); }
+      moveMonster(b,best[0],best[1],`보스킹 회피 ${coordName(best[0],best[1])}`); }
+    return true;
   }
+  return false;
 }
 
 /* ============================================================
@@ -562,7 +584,7 @@ function log(html){ const d=document.createElement('div'); d.innerHTML=html; log
    ============================================================ */
 function initGame(){
   if(state.timer)clearTimeout(state.timer);
-  state={ turn:0, combats:0, combatTurns:0, phase:'player', selected:null, over:false, timer:null, monsterCursor:0, awaitingCombat:false };
+  state={ turn:0, combats:0, combatTurns:0, phase:'player', selected:null, over:false, timer:null, monsterCursor:0, awaitingCombat:false, enemyAction:null };
   document.getElementById('banner').style.display='none';
   document.getElementById('combat').style.display='none';
   logEl.innerHTML=''; CB=null;
