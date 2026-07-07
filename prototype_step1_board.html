@@ -170,6 +170,8 @@ const KNIGHT = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
 // 폰: 전진 1칸, 캡처는 전진 대각 1칸
 const PLAYER_PAWN_DIR = -1;
 const ENEMY_PAWN_DIR = 1;
+const PLAYER_PAWN_HOME = 6;
+const ENEMY_PAWN_HOME = 1;
 const PROMOTION_CHOICES = ['Q','R','N','B'];
 const PLAYER_GLYPH = {P:'♙', B:'♗', N:'♘', R:'♖', Q:'♕', K:'♔'};
 const ENEMY_GLYPH = {p:'♟', b:'♝', n:'♞', r:'♜', q:'♛', X:'♚', g:'♟', w:'♞', o:'♜'};
@@ -220,6 +222,8 @@ function pieceTargets(p){
     const one=p.r+PLAYER_PAWN_DIR;
     if(inb(one,p.c)&&!occupied(one,p.c)){
       moves.push([one,p.c]);
+      const two=p.r+PLAYER_PAWN_DIR*2;
+      if(!p.hasMoved&&p.r===PLAYER_PAWN_HOME&&inb(two,p.c)&&!occupied(two,p.c)) moves.push([two,p.c]);
     }
     for(const dc of [-1,1]){
       const r=p.r+PLAYER_PAWN_DIR,c=p.c+dc;
@@ -236,6 +240,27 @@ function pieceTargets(p){
     for(const [dr,dc] of KING8){ const r=p.r+dr,c=p.c+dc; if(!inb(r,c))continue; const o=occupied(r,c);
       if(!o) moves.push([r,c]); else if(monAt(r,c)&&monAt(r,c).type!=='X') caps.push([r,c]); }
   }
+  return {moves,caps};
+}
+
+function enemyTargets(m){
+  const moves=[],caps=[];
+  const slide=(dirs)=>{ for(const [dr,dc] of dirs){ let r=m.r+dr,c=m.c+dc;
+    while(inb(r,c)){ const o=occupied(r,c); if(!o){moves.push([r,c]);}
+      else{ if(pieceAt(r,c))caps.push([r,c]); break;} r+=dr;c+=dc; } } };
+  if(m.type==='p'){
+    const one=m.r+ENEMY_PAWN_DIR;
+    if(inb(one,m.c)&&!occupied(one,m.c)){
+      moves.push([one,m.c]);
+      const two=m.r+ENEMY_PAWN_DIR*2;
+      if(!m.hasMoved&&m.r===ENEMY_PAWN_HOME&&inb(two,m.c)&&!occupied(two,m.c)) moves.push([two,m.c]);
+    }
+    for(const dc of [-1,1]){ const r=m.r+ENEMY_PAWN_DIR,c=m.c+dc; if(inb(r,c)&&pieceAt(r,c))caps.push([r,c]); }
+  } else if(m.type==='b')slide(DIAG);
+  else if(m.type==='r')slide(ORTH);
+  else if(m.type==='q')slide(KING8);
+  else if(m.type==='n'){ for(const [dr,dc] of KNIGHT){ const r=m.r+dr,c=m.c+dc; if(!inb(r,c))continue; const o=occupied(r,c); if(!o)moves.push([r,c]); else if(pieceAt(r,c))caps.push([r,c]); } }
+  else if(m.type==='X'){ for(const [dr,dc] of KING8){ const r=m.r+dr,c=m.c+dc; if(!inb(r,c))continue; const o=occupied(r,c); if(!o)moves.push([r,c]); else if(pieceAt(r,c))caps.push([r,c]); } }
   return {moves,caps};
 }
 
@@ -384,8 +409,8 @@ function monsterPhase(){
     const idx=(state.monsterCursor+i)%monsters.length;
     const m=monsters[idx];
     if(!m.alive||state.over) continue;
-    let acted=true;
-    if(m.type==='p') acted=enemyPawn(m);
+    let acted=false;
+    if('pbrnq'.includes(m.type)) acted=enemyChessMove(m);
     else if(m.arch==='hunter') hunter(m);
     else if(m.arch==='interceptor') interceptor(m);
     else if(m.arch==='escort') escort(m);
@@ -435,19 +460,17 @@ function promoteEnemyPawn(m){
   log(`<span class="lose">♟ 상대 폰 승급</span> 상대 폰이 퀸으로 승급했습니다.`,'lose');
 }
 
-function enemyPawn(m){
-  for(const dc of [-1,1]){
-    const r=m.r+ENEMY_PAWN_DIR,c=m.c+dc;
-    const target=inb(r,c)&&pieceAt(r,c);
-    if(target){
-      monsterAttack(m,target);
-      if(!target.alive){ moveMonster(m,r,c,`${m.name} 캡처 ${coordName(r,c)}`); promoteEnemyPawn(m); }
-      return true;
-    }
+function enemyChessMove(m){
+  const {moves,caps}=enemyTargets(m);
+  if(caps.length){
+    const [r,c]=caps[0], target=pieceAt(r,c);
+    monsterAttack(m,target);
+    if(!target.alive){ moveMonster(m,r,c,`${m.name} 캡처 ${coordName(r,c)}`); promoteEnemyPawn(m); }
+    return true;
   }
-  const one=m.r+ENEMY_PAWN_DIR;
-  if(inb(one,m.c)&&!occupied(one,m.c)){
-    moveMonster(m,one,m.c,`${m.name} 이동 ${coordName(one,m.c)}`);
+  if(moves.length){
+    const [r,c]=moves[0];
+    moveMonster(m,r,c,`${m.name} 이동 ${coordName(r,c)}`);
     promoteEnemyPawn(m);
     return true;
   }

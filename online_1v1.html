@@ -220,7 +220,7 @@ function initialGame(){
   rows.forEach((row,r)=>row.forEach((kind,c)=>{
     if(kind==='.')return;
     const side=r<2?'red':'blue';
-    pieces.push({id:`${side[0]}${id++}`,side,kind,r,c,hp:HP[kind],max:HP[kind],alive:true});
+    pieces.push({id:`${side[0]}${id++}`,side,kind,r,c,hp:HP[kind],max:HP[kind],alive:true,hasMoved:false});
   }));
   return {turn:'blue',turnNo:1,pieces,log:['온라인 1대1 대전을 시작합니다. Blue가 선공입니다.'],over:false,winner:null,seed:Date.now()};
 }
@@ -240,7 +240,13 @@ function targets(p){
   });
   const dir=p.side==='blue'?-1:1;
   if(p.kind==='P'){
-    if(inb(p.r+dir,p.c)&&!pieceAt(p.r+dir,p.c))moves.push([p.r+dir,p.c]);
+    const one=p.r+dir;
+    if(inb(one,p.c)&&!pieceAt(one,p.c)){
+      moves.push([one,p.c]);
+      const home=p.side==='blue'?6:1;
+      const two=p.r+dir*2;
+      if(!p.hasMoved&&p.r===home&&inb(two,p.c)&&!pieceAt(two,p.c))moves.push([two,p.c]);
+    }
     [-1,1].forEach(dc=>{const r=p.r+dir,c=p.c+dc,o=inb(r,c)&&pieceAt(r,c);if(o&&o.side!==p.side)caps.push([r,c]);});
   }else if(p.kind==='R')slide([[1,0],[-1,0],[0,1],[0,-1]]);
   else if(p.kind==='B')slide([[1,1],[1,-1],[-1,1],[-1,-1]]);
@@ -306,7 +312,7 @@ function applyAction(action){
   if(action.type==='move'){
     const p=game.pieces.find(x=>x.id===action.id&&x.alive);
     if(!p||p.side!==game.turn)return;
-    p.r=action.r; p.c=action.c;
+    p.r=action.r; p.c=action.c; p.hasMoved=true;
     promote(p);
     game.log.push(`<span class="sys">${label(p)} 이동 → ${coord(p.r,p.c)}</span>`);
     endTurn();
@@ -318,7 +324,7 @@ function applyAction(action){
     game.log.push(`<span class="card">${label(a)} 공격 카드 ${action.damage} 피해</span> → ${label(d)} HP ${d.hp}`);
     if(d.hp<=0){
       d.alive=false;
-      a.r=d.r; a.c=d.c;
+      a.r=d.r; a.c=d.c; a.hasMoved=true;
       promote(a);
       game.log.push(`<span class="good">${label(d)} 제압. ${label(a)}이 ${coord(a.r,a.c)} 점령</span>`);
       if(d.kind==='K')finish(a.side);
