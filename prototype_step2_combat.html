@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>프로토타입 [2단계: 카드 전투 레이어 · 단독]</title>
+<style>
+  :root{
+    --bg:#12141c; --panel:#1b1e2b; --line:#2c3145; --ink:#e8ebf5; --muted:#8b93ad;
+    --ally:#3f7fff; --enemy:#e0533d; --energy:#ffcf6b; --block:#7fd6ff; --dmg:#ff8a6b;
+    --card:#232b41; --cardEdge:#3a456b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px}
+  .wrap{max-width:1040px;margin:0 auto;padding:18px}
+  h1{font-size:16px;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:12px;margin-bottom:14px}
+  .top{display:flex;gap:18px;flex-wrap:wrap}
+  .arena{flex:1;min-width:420px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .side{width:300px}
+  .combatants{display:flex;justify-content:space-between;gap:16px;margin-bottom:10px}
+  .fighter{flex:1;background:#0f131e;border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center;position:relative}
+  .fighter h3{margin:0 0 8px;font-size:14px}
+  .fighter.ally h3{color:var(--ally)} .fighter.enemy h3{color:var(--enemy)}
+  .hpbar{height:16px;background:#2a2030;border-radius:8px;overflow:hidden;margin:6px 0 4px}
+  .hpfill{height:100%;background:linear-gradient(90deg,#4bd07a,#7fe0a0);transition:width .3s}
+  .fighter.enemy .hpfill{background:linear-gradient(90deg,#e0533d,#ff8a6b)}
+  .hptext{font-variant-numeric:tabular-nums;font-size:13px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;margin-top:6px}
+  .badge.block{background:rgba(127,214,255,.15);color:var(--block);border:1px solid var(--block)}
+  .intent{margin-top:8px;font-size:13px;color:var(--enemy);font-weight:600}
+  .intent small{display:block;color:var(--muted);font-weight:400;font-size:11px}
+  .energyrow{display:flex;align-items:center;gap:10px;margin:6px 0 12px}
+  .energy{font-size:15px;font-weight:700;color:var(--energy)}
+  .hand{display:flex;gap:10px;flex-wrap:wrap;min-height:150px;align-items:flex-end}
+  .cardc{width:112px;min-height:150px;background:var(--card);border:1px solid var(--cardEdge);border-radius:10px;padding:9px;cursor:pointer;display:flex;flex-direction:column;transition:transform .12s,box-shadow .12s;position:relative}
+  .cardc:hover{transform:translateY(-6px);box-shadow:0 6px 16px rgba(0,0,0,.4)}
+  .cardc.disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+  .cardc .cost{position:absolute;top:-8px;left:-8px;width:24px;height:24px;border-radius:50%;background:var(--energy);color:#1a1400;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .cardc .cname{font-weight:700;font-size:13px;margin-bottom:6px}
+  .cardc .cdesc{font-size:11px;color:#c7cde0;line-height:1.4;flex:1}
+  .cardc .ctag{font-size:10px;color:var(--muted);margin-top:6px}
+  .controls{display:flex;gap:10px;margin-top:14px;align-items:center;flex-wrap:wrap}
+  .btn{background:var(--ally);color:#fff;border:0;border-radius:8px;padding:9px 16px;font-size:13px;cursor:pointer}
+  .btn.sec{background:#333a52}
+  .piles{margin-left:auto;color:var(--muted);font-size:12px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+  .panel h2{font-size:12px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .field{margin-bottom:10px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .field select,.field input[type=number]{width:100%;background:#0f131e;color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px}
+  .field.range output{float:right;color:var(--ally);font-weight:700}
+  input[type=range]{width:100%}
+  #log{height:200px;overflow-y:auto;background:#0e1017;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px;font-family:ui-monospace,Menlo,monospace;line-height:1.55}
+  #log .dmg{color:var(--dmg)} #log .blk{color:var(--block)} #log .sys{color:var(--muted)} #log .win{color:#5be08a} #log .lose{color:#ff7a6b} #log .en{color:var(--enemy)}
+  .banner{position:fixed;inset:0;background:rgba(8,9,14,.85);display:none;align-items:center;justify-content:center;z-index:50}
+  .banner .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 34px;text-align:center;max-width:420px}
+  .hint{font-size:11px;color:var(--muted);line-height:1.6;margin-top:8px}
+  .float{position:absolute;top:30%;left:50%;transform:translateX(-50%);font-weight:800;font-size:22px;pointer-events:none;animation:rise 0.9s ease-out forwards}
+  @keyframes rise{from{opacity:1;transform:translate(-50%,0)}to{opacity:0;transform:translate(-50%,-40px)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>보드×카드 하이브리드 — 프로토타입</h1>
+  <div class="sub">2단계 · 카드 전투 레이어 (단독) — 보드 없이 전투 1회 테스트. 인접 아군 수는 슬라이더로 시뮬레이션.</div>
+
+  <div class="top">
+    <div class="arena">
+      <div class="combatants">
+        <div class="fighter ally" id="f-ally">
+          <h3 id="ally-name">아군 기물</h3>
+          <div class="hpbar"><div class="hpfill" id="ally-hpfill"></div></div>
+          <div class="hptext" id="ally-hptext">–</div>
+          <span class="badge block" id="ally-block">방어 0</span>
+        </div>
+        <div class="fighter enemy" id="f-enemy">
+          <h3 id="enemy-name">몬스터</h3>
+          <div class="hpbar"><div class="hpfill" id="enemy-hpfill"></div></div>
+          <div class="hptext" id="enemy-hptext">–</div>
+          <div class="intent" id="enemy-intent">–</div>
+        </div>
+      </div>
+
+      <div class="energyrow">
+        <span class="energy" id="energy">⚡ 3 / 3</span>
+        <span class="hint" style="margin:0">카드를 클릭해 사용 · 에너지 소모</span>
+      </div>
+      <div class="hand" id="hand"></div>
+
+      <div class="controls">
+        <button class="btn" id="endturn">턴 종료 ▶</button>
+        <button class="btn sec" id="restart">↻ 전투 재시작</button>
+        <span class="piles" id="piles">뽑을 더미 0 · 버림 더미 0</span>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="panel">
+        <h2>전투 설정 (튜닝 레버)</h2>
+        <div class="field">
+          <label>아군 기물</label>
+          <select id="set-ally"></select>
+        </div>
+        <div class="field">
+          <label>상대 몬스터</label>
+          <select id="set-enemy"></select>
+        </div>
+        <div class="field">
+          <label>아군 시작 HP (부상 시뮬레이션)</label>
+          <input type="number" id="set-allyhp" min="1">
+        </div>
+        <div class="field">
+          <label>몬스터 시작 HP (사전 딜 시뮬레이션)</label>
+          <input type="number" id="set-enemyhp" min="1">
+        </div>
+        <div class="field range">
+          <label>인접 아군 수 (지원사격/군단방패) <output id="adjout">2</output></label>
+          <input type="range" id="set-adj" min="0" max="8" value="2">
+        </div>
+        <button class="btn" id="apply" style="width:100%">이 설정으로 전투 시작</button>
+        <div class="hint">검증 Q2: 인접 아군 수를 올리면 "지원 사격"·"군단의 방패"의 위력이 어떻게 커지는지 확인 → 보드에서 뭉칠 유인이 생기는가?</div>
+      </div>
+
+      <div class="panel">
+        <h2>전투 로그</h2>
+        <div id="log"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="banner" id="banner"><div class="box">
+  <h3 id="b-title"></h3><div id="b-msg" style="color:var(--muted);margin:8px 0"></div>
+  <button class="btn" id="b-again">다시 전투</button>
+</div></div>
+
+<script>
+/* ============================================================
+   CONFIG — 모든 전투 수치가 여기 하나에.
+   ============================================================ */
+const CONFIG = {
+  ENERGY_PER_TURN: 3,
+  HAND_SIZE: 5,
+
+  // 아군 기물 HP (스펙 2.2)
+  PIECES: {
+    P:{name:'폰',    hp:10},
+    B:{name:'비숍',  hp:12},
+    N:{name:'나이트',hp:14},
+    R:{name:'룩',    hp:18},
+    K:{name:'킹',    hp:25},
+  },
+
+  // 카드 정의 (스펙 3.6). effect는 계산식만, 로직은 아래 엔진이 해석.
+  CARDS: {
+    strike:  {name:'타격',       cost:1, kind:'damage', value:5,  desc:'5 데미지'},
+    guard:   {name:'방패',       cost:1, kind:'block',  value:5,  desc:'방어 5 (이번 몬스터 턴 피해 5 감소)'},
+    bash:    {name:'강타',       cost:2, kind:'damage', value:9,  desc:'9 데미지'},
+    check:   {name:'견제',       cost:1, kind:'damage_weaken', value:3, weaken:2, desc:'3 데미지 + 적 다음 공격 -2'},
+    support: {name:'지원 사격',  cost:1, kind:'damage_adj', per:3, desc:'인접 아군 1기당 3 데미지'},
+    legion:  {name:'군단의 방패',cost:1, kind:'block_adj',  per:4, desc:'인접 아군 1기당 방어 4'},
+  },
+
+  // 시작 덱 12장 (스펙 3.6): [카드id, 장수]
+  START_DECK: [
+    ['strike',4], ['guard',3], ['bash',1], ['check',1], ['support',2], ['legion',1],
+  ],
+
+  // 몬스터: HP(스펙4.1) + 전투중 행동 스크립트(스펙4.2 "고블린=공격6 반복" 등, 수치=튜닝레버)
+  //   script: 행동 배열을 순환 실행. {atk:n} = n 데미지 공격.
+  MONSTERS: {
+    g:{name:'고블린', hp:12, script:[{atk:6}]},
+    w:{name:'늑대',   hp:15, script:[{atk:5},{atk:5},{atk:9}]},
+    o:{name:'오크',   hp:20, script:[{atk:8},{atk:8},{atk:14}]},
+    t:{name:'트롤',   hp:30, script:[{atk:10},{atk:10},{atk:18}]},
+    X:{name:'보스킹', hp:60, script:[{atk:12},{atk:9},{atk:9},{atk:20}]},
+  },
+
+  // 3단계에서 쓸 포위 보너스(참고). 단독 단계에선 미적용.
+  SIEGE_BONUS:{damagePerPiece:5},
+};
+
+/* ============================================================
+   전투 상태
+   ============================================================ */
+let C = null; // current combat
+function newCombat(opt){
+  const pieceDef = CONFIG.PIECES[opt.ally];
+  const monDef   = CONFIG.MONSTERS[opt.enemy];
+  const deck=[];
+  CONFIG.START_DECK.forEach(([id,n])=>{ for(let i=0;i<n;i++) deck.push(id); });
+  C = {
+    ally:{ kind:opt.ally, name:pieceDef.name, hp:opt.allyHp, max:pieceDef.hp, block:0 },
+    enemy:{ type:opt.enemy, name:monDef.name, hp:opt.enemyHp, max:monDef.hp, script:monDef.script, step:0 },
+    adj: opt.adj,
+    energy: CONFIG.ENERGY_PER_TURN,
+    draw: shuffle(deck), discard:[], hand:[],
+    over:false, turn:1,
+  };
+  logEl.innerHTML='';
+  log(`<span class="sys">— 전투 시작: ${C.ally.name}(${C.ally.hp}/${C.ally.max}) vs ${C.enemy.name}(${C.enemy.hp}/${C.enemy.max}) · 인접 아군 ${C.adj}기 —</span>`);
+  startPlayerTurn(true);
+}
+
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function drawCards(n){
+  for(let i=0;i<n;i++){
+    if(C.draw.length===0){
+      if(C.discard.length===0) break;
+      C.draw = shuffle(C.discard); C.discard=[];
+      log('<span class="sys">버림 더미를 섞어 뽑을 더미로 리셋</span>');
+    }
+    C.hand.push(C.draw.pop());
+  }
+}
+
+function startPlayerTurn(first){
+  C.ally.block = 0;                 // 방어는 내 턴 시작 시 리셋 (StS)
+  C.energy = CONFIG.ENERGY_PER_TURN;
+  drawCards(CONFIG.HAND_SIZE);      // 매 턴 핸드 새로 5장
+  setIntent();
+  render();
+}
+
+// 몬스터 다음 행동 예고
+function currentAction(){ return C.enemy.script[C.enemy.step % C.enemy.script.length]; }
+function setIntent(){ C._intent = currentAction(); C._weaken = C._weaken||0; }
+
+function cardEffectValue(card){
+  if(card.kind==='damage_adj') return card.per*C.adj;
+  if(card.kind==='block_adj')  return card.per*C.adj;
+  return card.value;
+}
+
+function playCard(handIdx){
+  if(C.over) return;
+  const id=C.hand[handIdx]; const card=CONFIG.CARDS[id];
+  if(C.energy < card.cost) return;
+  C.energy -= card.cost;
+  const val=cardEffectValue(card);
+  if(card.kind==='damage' || card.kind==='damage_adj'){
+    dealToEnemy(val, card.name);
+  } else if(card.kind==='damage_weaken'){
+    dealToEnemy(val, card.name);
+    C._weaken += card.weaken;
+    log(`<span class="en">${card.name}: 적 다음 공격 -${card.weaken}</span>`);
+  } else if(card.kind==='block' || card.kind==='block_adj'){
+    C.ally.block += val;
+    log(`<span class="blk">${card.name}: 방어 +${val} (누적 ${C.ally.block})</span>`);
+  }
+  C.hand.splice(handIdx,1); C.discard.push(id);
+  if(checkWin()) return;
+  render();
+}
+
+function dealToEnemy(dmg,src){
+  C.enemy.hp=Math.max(0,C.enemy.hp-dmg);
+  log(`<span class="dmg">${src}: ${C.enemy.name}에게 ${dmg} 피해 → HP ${C.enemy.hp}/${C.enemy.max}</span>`);
+  floatText('f-enemy', `-${dmg}`, 'var(--dmg)');
+}
+
+function endTurn(){
+  if(C.over) return;
+  // 남은 핸드 버림
+  C.discard.push(...C.hand); C.hand=[];
+  render();
+  enemyTurn();
+}
+
+function enemyTurn(){
+  if(C.over) return;
+  const act=currentAction();
+  if(act.atk!=null){
+    let dmg=act.atk - (C._weaken||0);
+    if(dmg<0) dmg=0;
+    C._weaken=0;
+    const blocked=Math.min(C.ally.block, dmg);
+    const through=dmg-blocked;
+    C.ally.block-=blocked;
+    C.ally.hp=Math.max(0,C.ally.hp-through);
+    log(`<span class="en">${C.enemy.name} 공격 ${act.atk}</span> — 방어로 ${blocked} 막고 <span class="dmg">${through} 피해</span> → 아군 HP ${C.ally.hp}/${C.ally.max}`);
+    if(through>0) floatText('f-ally', `-${through}`, 'var(--dmg)');
+  }
+  C.enemy.step++;
+  if(checkLose()) return;
+  C.turn++;
+  startPlayerTurn();
+}
+
+function checkWin(){ if(C.enemy.hp<=0){ endCombat(true); return true; } return false; }
+function checkLose(){ if(C.ally.hp<=0){ endCombat(false); return true; } return false; }
+
+function endCombat(win){
+  C.over=true; render();
+  if(win) log(`<span class="win">▶ 승리 — ${C.enemy.name} 캡처! (아군 HP ${C.ally.hp} 유지되어 다음 전투로 이월)</span>`);
+  else    log(`<span class="lose">▶ 패배 — ${C.ally.name} 사망 (몬스터 HP ${C.enemy.hp} 남아 다음 도전자에게 이월)</span>`);
+  document.getElementById('b-title').textContent = win?'🗡 캡처 성공':'💀 기물 사망';
+  document.getElementById('b-msg').innerHTML = win
+    ? `${C.turn}턴 만에 승리. <br>남은 아군 HP <b>${C.ally.hp}</b> — HP 지속성: 이 값이 보드로 이월됩니다.`
+    : `${C.enemy.name}에게 남은 HP <b>${C.enemy.hp}</b> — HP 지속성: 다음 기물이 이어서 공략.`;
+  document.getElementById('banner').style.display='flex';
+}
+
+/* ============================================================
+   렌더링
+   ============================================================ */
+const logEl=document.getElementById('log');
+function log(html){ const d=document.createElement('div'); d.innerHTML=html; logEl.appendChild(d); logEl.scrollTop=logEl.scrollHeight; }
+function floatText(fid,txt,color){ const p=document.getElementById(fid); const f=document.createElement('div'); f.className='float'; f.style.color=color; f.textContent=txt; p.appendChild(f); setTimeout(()=>f.remove(),900); }
+
+function render(){
+  const a=C.ally,e=C.enemy;
+  document.getElementById('ally-name').textContent=`${a.name} (아군)`;
+  document.getElementById('ally-hpfill').style.width=(100*a.hp/a.max)+'%';
+  document.getElementById('ally-hptext').textContent=`${a.hp} / ${a.max} ❤`;
+  document.getElementById('ally-block').textContent=`방어 ${a.block}`;
+  document.getElementById('ally-block').style.display=a.block>0?'inline-block':'none';
+
+  document.getElementById('enemy-name').textContent=`${e.name}`;
+  document.getElementById('enemy-hpfill').style.width=(100*e.hp/e.max)+'%';
+  document.getElementById('enemy-hptext').textContent=`${e.hp} / ${e.max} ❤`;
+  const act=currentAction();
+  const shownAtk = Math.max(0,(act.atk||0)-(C._weaken||0));
+  document.getElementById('enemy-intent').innerHTML = C.over ? '–' :
+    `⚔ 공격 ${shownAtk}<small>다음 행동 예고 (인텐트)${C._weaken?` · 견제로 -${C._weaken}`:''}</small>`;
+
+  document.getElementById('energy').textContent=`⚡ ${C.energy} / ${CONFIG.ENERGY_PER_TURN}`;
+  document.getElementById('piles').textContent=`뽑을 더미 ${C.draw.length} · 버림 더미 ${C.discard.length}`;
+
+  const handEl=document.getElementById('hand'); handEl.innerHTML='';
+  C.hand.forEach((id,idx)=>{
+    const card=CONFIG.CARDS[id];
+    const val=cardEffectValue(card);
+    const affordable = C.energy>=card.cost && !C.over;
+    const el=document.createElement('div');
+    el.className='cardc'+(affordable?'':' disabled');
+    let dyn='';
+    if(card.kind==='damage_adj') dyn=` <b>(현재 ${val})</b>`;
+    if(card.kind==='block_adj')  dyn=` <b>(현재 ${val})</b>`;
+    el.innerHTML=`<span class="cost">${card.cost}</span>
+      <div class="cname">${card.name}</div>
+      <div class="cdesc">${card.desc}${dyn}</div>
+      <div class="ctag">${card.kind.includes('block')?'🛡 방어':'🗡 공격'}</div>`;
+    if(affordable) el.onclick=()=>playCard(idx);
+    handEl.appendChild(el);
+  });
+}
+
+/* ============================================================
+   설정 UI
+   ============================================================ */
+function fillSelects(){
+  const as=document.getElementById('set-ally');
+  Object.entries(CONFIG.PIECES).forEach(([k,v])=>{ const o=document.createElement('option'); o.value=k; o.textContent=`${v.name} (HP ${v.hp})`; as.appendChild(o); });
+  as.value='N';
+  const es=document.getElementById('set-enemy');
+  Object.entries(CONFIG.MONSTERS).forEach(([k,v])=>{ const o=document.createElement('option'); o.value=k; o.textContent=`${v.name} (HP ${v.hp})`; es.appendChild(o); });
+  es.value='g';
+  syncHpDefaults();
+}
+function syncHpDefaults(){
+  document.getElementById('set-allyhp').value = CONFIG.PIECES[document.getElementById('set-ally').value].hp;
+  document.getElementById('set-enemyhp').value = CONFIG.MONSTERS[document.getElementById('set-enemy').value].hp;
+}
+document.getElementById('set-ally').addEventListener('change',()=>{ document.getElementById('set-allyhp').value=CONFIG.PIECES[document.getElementById('set-ally').value].hp; });
+document.getElementById('set-enemy').addEventListener('change',()=>{ document.getElementById('set-enemyhp').value=CONFIG.MONSTERS[document.getElementById('set-enemy').value].hp; });
+document.getElementById('set-adj').addEventListener('input',e=>{ document.getElementById('adjout').textContent=e.target.value; });
+
+function startFromSettings(){
+  document.getElementById('banner').style.display='none';
+  newCombat({
+    ally: document.getElementById('set-ally').value,
+    enemy: document.getElementById('set-enemy').value,
+    allyHp: Math.max(1, parseInt(document.getElementById('set-allyhp').value)||1),
+    enemyHp: Math.max(1, parseInt(document.getElementById('set-enemyhp').value)||1),
+    adj: parseInt(document.getElementById('set-adj').value)||0,
+  });
+}
+
+document.getElementById('endturn').addEventListener('click', endTurn);
+document.getElementById('restart').addEventListener('click', startFromSettings);
+document.getElementById('apply').addEventListener('click', startFromSettings);
+document.getElementById('b-again').addEventListener('click', startFromSettings);
+
+/* ============================================================
+   시작
+   ============================================================ */
+fillSelects();
+startFromSettings();
+</script>
+</body>
+</html>

@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>보드×카드 하이브리드 — 로그인 · 덱빌딩 · 플레이</title>
+<style>
+  :root{
+    --bg:#0f1119; --panel:#1b1e2b; --panel2:#151827; --line:#2c3145; --ink:#e8ebf5; --muted:#8b93ad;
+    --player:#3f7fff; --enemy:#e0533d; --boss:#c341e0; --cell:#232839; --cell2:#1d2231;
+    --move:#2f6f4d; --cap:#8a3030; --threat:#3a2740; --sel:#d8a12a;
+    --energy:#ffcf6b; --block:#7fd6ff; --dmg:#ff8a6b; --card:#232b41; --cardEdge:#3a456b;
+    --ok:#4bd07a;
+    --cell-size:clamp(44px, 10vw, 72px); --board-gap:3px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px}
+  button{font-family:inherit}
+  .btn{background:var(--player);color:#fff;border:0;border-radius:8px;padding:10px 16px;font-size:14px;cursor:pointer}
+  .btn:hover{filter:brightness(1.08)} .btn:disabled{opacity:.4;cursor:not-allowed;filter:none}
+  .btn.sec{background:#333a52} .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--muted)}
+  .btn.ok{background:var(--ok);color:#08210f}
+  .screen{display:none;min-height:100vh}
+  .screen.active{display:block}
+  .center{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+
+  /* ---------- 로그인 ---------- */
+  .loginbox{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px}
+  .loginbox h1{font-size:20px;margin:0 0 4px;text-align:center}
+  .loginbox .tag{color:var(--muted);font-size:12px;text-align:center;margin-bottom:22px}
+  .field{margin-bottom:14px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+  .field input{width:100%;background:#0e1017;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:11px}
+  .field input:focus{outline:none;border-color:var(--player)}
+  .loginbox .btn{width:100%;margin-top:6px}
+  .divider{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:11px;margin:16px 0}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--line)}
+  .note{font-size:11px;color:var(--muted);margin-top:16px;line-height:1.6;text-align:center}
+  .err{color:var(--enemy);font-size:12px;margin-top:8px;min-height:16px;text-align:center}
+
+  /* ---------- 상단바 ---------- */
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--line);background:var(--panel2)}
+  .topbar .who{font-size:13px} .topbar .who b{color:var(--player)}
+  .topbar .actions{display:flex;gap:8px}
+
+  /* ---------- 계정 ---------- */
+  .container{max-width:900px;margin:0 auto;padding:24px 20px}
+  .hero{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:18px}
+  .hero h2{margin:0 0 6px;font-size:22px}
+  .hero p{margin:0;color:var(--muted);font-size:13px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:680px){.grid2{grid-template-columns:1fr}}
+  .cardpanel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .cardpanel h3{margin:0 0 10px;font-size:15px}
+  .cardpanel p{color:var(--muted);font-size:12px;line-height:1.6;margin:0 0 14px}
+  .decksummary{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
+  .chip{background:#0e1017;border:1px solid var(--line);border-radius:20px;padding:4px 10px;font-size:12px}
+  .chip b{color:var(--energy)}
+
+  /* ---------- 덱빌더 ---------- */
+  .deckwrap{display:grid;grid-template-columns:1fr 340px;gap:18px}
+  @media(max-width:820px){.deckwrap{grid-template-columns:1fr}}
+  .pool,.mydeck{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
+  .poolgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+  .pcard{background:var(--card);border:1px solid var(--cardEdge);border-radius:10px;padding:10px;position:relative;display:flex;flex-direction:column}
+  .pcard .cost{position:absolute;top:-8px;left:-8px;width:24px;height:24px;border-radius:50%;background:var(--energy);color:#1a1400;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .pcard .cn{font-weight:700;font-size:13px;margin-bottom:4px}
+  .pcard .cd{font-size:11px;color:#c7cde0;line-height:1.4;flex:1;margin-bottom:8px}
+  .pcard .row{display:flex;align-items:center;justify-content:space-between;gap:6px}
+  .pcard .own{font-size:11px;color:var(--muted)}
+  .minibtn{background:#333a52;color:#fff;border:0;border-radius:6px;padding:4px 10px;font-size:13px;cursor:pointer}
+  .minibtn.add{background:var(--player)} .minibtn:disabled{opacity:.35;cursor:not-allowed}
+  .deckhead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+  .deckhead .count{font-size:20px;font-weight:800}
+  .deckhead .count.ok{color:var(--ok)} .deckhead .count.bad{color:var(--enemy)}
+  .decklist{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;max-height:52vh;overflow:auto}
+  .dl-row{display:flex;align-items:center;justify-content:space-between;background:#0e1017;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px}
+  .dl-row .x{color:var(--muted);font-size:11px}
+  .deckbtns{display:flex;flex-direction:column;gap:8px}
+
+  /* ---------- 게임(보드+전투) ---------- */
+  .gamewrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  #boardWrap{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  #stage{display:flex;align-items:center;justify-content:center;max-width:100%}
+  #board{display:grid;gap:var(--board-gap);background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;transition:transform .25s}
+  #stage.diamond{width:min(660px, calc(100vw - 36px));aspect-ratio:1}
+  #board.diamond{transform:rotate(-45deg)}
+  #board.diamond .piece,#board.diamond .coord{transform:rotate(45deg)}
+  .cell{position:relative;width:var(--cell-size);height:var(--cell-size);background:var(--cell);display:flex;align-items:center;justify-content:center;user-select:none}
+  .cell.alt{background:var(--cell2)}
+  .cell.move{outline:3px solid var(--move);outline-offset:-3px;cursor:pointer}
+  .cell.cap{outline:3px solid var(--cap);outline-offset:-3px;cursor:pointer}
+  .cell.threat::after{content:"";position:absolute;inset:0;background:var(--threat);opacity:.5;pointer-events:none}
+  .cell.selected{outline:3px solid var(--sel);outline-offset:-3px}
+  .coord{position:absolute;top:2px;left:3px;font-size:9px;color:#4a5170}
+  .piece{width:calc(var(--cell-size)*.78);height:calc(var(--cell-size)*.78);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,.4);cursor:pointer;position:relative;z-index:2}
+  .piece.p{background:var(--player)} .piece.e{background:var(--enemy)} .piece.boss{background:var(--boss)}
+  .piece .g{font-weight:700;font-size:16px} .piece .st{font-size:9px;margin-top:2px;opacity:.95}
+  .piece.selectable:hover{filter:brightness(1.15)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;width:290px}
+  .panel h2{font-size:12px;margin:0 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line)}
+  #log{height:170px;overflow-y:auto;background:#0e1017;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px;font-family:ui-monospace,Menlo,monospace;line-height:1.5}
+  #log .t{color:var(--muted)} #log .cmb{color:#ffcf6b} #log .win{color:#5be08a} #log .lose{color:#ff7a6b}
+  .legend{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.6}
+  .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
+
+  #combat{position:fixed;inset:0;background:rgba(8,9,14,.92);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+  #combat .arena{width:min(760px,100%);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;max-height:96vh;overflow:auto}
+  #combat .ctitle{font-size:14px;margin:0 0 12px;color:var(--muted)} #combat .ctitle b{color:var(--ink)}
+  .combatants{display:flex;justify-content:space-between;gap:16px;margin-bottom:10px}
+  .fighter{flex:1;background:#0f131e;border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center;position:relative}
+  .fighter h3{margin:0 0 6px;font-size:14px} .fighter.ally h3{color:var(--player)} .fighter.enemy h3{color:var(--enemy)}
+  .hpbar{height:15px;background:#2a2030;border-radius:8px;overflow:hidden;margin:6px 0 4px}
+  .hpfill{height:100%;background:linear-gradient(90deg,#4bd07a,#7fe0a0);transition:width .3s}
+  .fighter.enemy .hpfill{background:linear-gradient(90deg,#e0533d,#ff8a6b)}
+  .hptext{font-variant-numeric:tabular-nums;font-size:13px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;margin-top:6px;border:1px solid var(--block);color:var(--block);background:rgba(127,214,255,.12)}
+  .intent{margin-top:8px;font-size:13px;color:var(--enemy);font-weight:600} .intent small{display:block;color:var(--muted);font-weight:400;font-size:11px}
+  .energyrow{display:flex;align-items:center;gap:10px;margin:6px 0 12px} .energy{font-size:15px;font-weight:700;color:var(--energy)}
+  .hand{display:flex;gap:10px;flex-wrap:wrap;min-height:150px;align-items:flex-end}
+  .cardc{width:108px;min-height:148px;background:var(--card);border:1px solid var(--cardEdge);border-radius:10px;padding:9px;cursor:pointer;display:flex;flex-direction:column;transition:transform .12s;position:relative}
+  .cardc:hover{transform:translateY(-6px)} .cardc.disabled{opacity:.4;cursor:not-allowed;transform:none}
+  .cardc .cost{position:absolute;top:-8px;left:-8px;width:24px;height:24px;border-radius:50%;background:var(--energy);color:#1a1400;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .cardc .cname{font-weight:700;font-size:13px;margin-bottom:6px} .cardc .cdesc{font-size:11px;color:#c7cde0;line-height:1.4;flex:1} .cardc .ctag{font-size:10px;color:var(--muted);margin-top:6px}
+  .controls{display:flex;gap:10px;margin-top:14px;align-items:center;flex-wrap:wrap} .piles{margin-left:auto;color:var(--muted);font-size:12px}
+  #c-log{height:110px;overflow-y:auto;background:#0e1017;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px;font-family:ui-monospace,Menlo,monospace;line-height:1.5;margin-top:12px}
+  #c-log .dmg{color:var(--dmg)} #c-log .blk{color:var(--block)} #c-log .sys{color:var(--muted)} #c-log .en{color:var(--enemy)} #c-log .win{color:#5be08a} #c-log .lose{color:#ff7a6b}
+  .float{position:absolute;top:26%;left:50%;font-weight:800;font-size:22px;pointer-events:none;animation:rise .9s ease-out forwards}
+  @keyframes rise{from{opacity:1;transform:translate(-50%,0)}to{opacity:0;transform:translate(-50%,-40px)}}
+  .banner{position:fixed;inset:0;background:rgba(8,9,14,.85);display:none;align-items:center;justify-content:center;z-index:60}
+  .banner .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 34px;text-align:center;max-width:420px}
+  .banner h3{margin:0 0 8px;font-size:22px}
+</style>
+</head>
+<body>
+
+<!-- ===================== 로그인 ===================== -->
+<div class="screen active" id="screen-login"><div class="center">
+  <div class="loginbox">
+    <h1>커맨더 로그인</h1>
+    <div class="tag">보드×카드 하이브리드 · 프로토타입</div>
+    <div class="field"><label>아이디</label><input id="in-user" placeholder="아무 아이디나 입력" autocomplete="off"></div>
+    <div class="field"><label>비밀번호 (선택)</label><input id="in-pass" type="password" placeholder="목업이라 검증 안 함"></div>
+    <button class="btn" id="btn-login">로그인</button>
+    <div class="err" id="login-err"></div>
+    <div class="divider">또는</div>
+    <button class="btn sec" id="btn-guest" style="width:100%">로그인 없이 시작 (게스트)</button>
+    <div class="note">서버 없는 목업 로그인입니다. 아이디만 넣으면 통과하고, 계정·덱은 이 브라우저에 저장돼요.</div>
+  </div>
+</div></div>
+
+<!-- ===================== 계정 ===================== -->
+<div class="screen" id="screen-account">
+  <div class="topbar">
+    <div class="who">👤 <b id="acc-name">–</b> 님</div>
+    <div class="actions"><button class="btn ghost" id="btn-logout">로그아웃</button></div>
+  </div>
+  <div class="container">
+    <div class="hero">
+      <h2 id="acc-hello">환영합니다</h2>
+      <p>공주를 구하러 몬스터의 숲으로. 덱을 정비하고 스테이지에 도전하세요.</p>
+    </div>
+    <div class="grid2">
+      <div class="cardpanel">
+        <h3>🃏 내 덱</h3>
+        <p>커맨더 공용 덱입니다. 모든 기물이 전투에서 이 덱을 공유해요.</p>
+        <div class="decksummary" id="acc-decksummary"></div>
+        <button class="btn" id="btn-todeck">덱 빌딩</button>
+      </div>
+      <div class="cardpanel">
+        <h3>⚔ 스테이지</h3>
+        <p>숲 입구 — 상대 군대를 포위(체크메이트)하고 보스킹을 카드 전투로 제압하면 클리어.</p>
+        <button class="btn ok" id="btn-play" style="width:100%">게임 시작</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 덱 빌더 ===================== -->
+<div class="screen" id="screen-deck">
+  <div class="topbar">
+    <div class="who">🃏 덱 빌딩</div>
+    <div class="actions"><button class="btn ghost" id="btn-deckback">← 계정으로</button></div>
+  </div>
+  <div class="container">
+    <div class="deckwrap">
+      <div class="pool">
+        <h3 style="margin:0 0 4px">보유 카드 풀</h3>
+        <p style="color:var(--muted);font-size:12px;margin:0 0 14px">보유한 수량 안에서 덱에 넣으세요.</p>
+        <div class="poolgrid" id="poolgrid"></div>
+      </div>
+      <div class="mydeck">
+        <div class="deckhead"><h3 style="margin:0">내 덱</h3><div class="count" id="deckcount">0 / 12</div></div>
+        <div class="decklist" id="decklist"></div>
+        <div class="deckbtns">
+          <button class="btn ok" id="btn-savedeck">덱 저장</button>
+          <button class="btn sec" id="btn-defaultdeck">기본 덱으로 초기화</button>
+          <div class="err" id="deck-msg" style="min-height:14px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 게임 ===================== -->
+<div class="screen" id="screen-game">
+  <div class="topbar">
+    <div class="who">⚔ 스테이지 · 숲 입구</div>
+    <div class="actions">
+      <button class="btn sec" id="btn-restartgame">↻ 재시작</button>
+      <button class="btn ghost" id="btn-toaccount">← 계정</button>
+    </div>
+  </div>
+  <div class="gamewrap">
+    <div>
+      <div id="boardWrap"><div id="stage"><div id="board"></div></div>
+        <div class="legend">
+          <span class="swatch" style="background:var(--move)"></span>이동
+          <span class="swatch" style="background:var(--cap)"></span>캡처(전투)
+          <span class="swatch" style="background:var(--threat)"></span>내 위협범위
+          <br>몬스터 캡처 클릭 → 카드 전투. 파랑=아군, 빨강=상대, 보라=보스킹.
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <h2>플레이 로그</h2>
+      <div class="stat"><span>턴 수</span><b id="s-turn">0</b></div>
+      <div class="stat"><span>전투 발생</span><b id="s-combat">0</b></div>
+      <div class="stat"><span>전투 누적 턴</span><b id="s-cturns">0</b></div>
+      <div class="stat"><span>남은 상대</span><b id="s-mon">0</b></div>
+      <div class="stat"><span>남은 아군</span><b id="s-ally">0</b></div>
+      <div class="stat"><span>보스 포위</span><b id="s-siege">0</b></div>
+      <div style="margin-top:12px"></div>
+      <h2>이벤트 로그</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+
+<!-- 전투 오버레이 -->
+<div id="combat"><div class="arena">
+  <div class="ctitle" id="c-title"></div>
+  <div class="combatants">
+    <div class="fighter ally"><h3 id="c-ally-name">아군</h3><div class="hpbar"><div class="hpfill" id="c-ally-hp"></div></div><div class="hptext" id="c-ally-hptext">–</div><span class="badge" id="c-ally-block">방어 0</span></div>
+    <div class="fighter enemy"><h3 id="c-enemy-name">상대</h3><div class="hpbar"><div class="hpfill" id="c-enemy-hp"></div></div><div class="hptext" id="c-enemy-hptext">–</div><div class="intent" id="c-intent">–</div></div>
+  </div>
+  <div class="energyrow"><span class="energy" id="c-energy">⚡ 3 / 3</span><span style="color:var(--muted);font-size:11px">카드 클릭 사용 · 인접 아군 자동 계산</span></div>
+  <div class="hand" id="c-hand"></div>
+  <div class="controls"><button class="btn" id="c-endturn">턴 종료 ▶</button><span class="piles" id="c-piles"></span></div>
+  <div id="c-log"></div>
+</div></div>
+
+<!-- 게임 종료 배너 -->
+<div class="banner" id="banner"><div class="box"><h3 id="b-title"></h3><div id="b-msg" style="color:var(--muted)"></div><button class="btn" id="restartBanner" style="margin-top:12px">계정으로</button></div></div>
+
+<script>
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const CONFIG = {
+  BOARD_SIZE:6, DIAMOND_VIEW:true,
+  PIECE_HP:{P:10,B:12,N:14,R:18,K:25},
+  MONSTER:{
+    g:{name:'고블린',hp:12,atk:6,arch:'hunter',script:[{atk:6}]},
+    w:{name:'늑대',hp:15,atk:7,arch:'interceptor',script:[{atk:6},{atk:6},{atk:10}]},
+    o:{name:'오크',hp:20,atk:8,arch:'escort',script:[{atk:8},{atk:8},{atk:14}]},
+    p:{name:'상대 폰',hp:10,atk:5,arch:'hunter',script:[{atk:5}]},
+    n:{name:'상대 나이트',hp:14,atk:7,arch:'interceptor',script:[{atk:6},{atk:6},{atk:10}]},
+    r:{name:'상대 룩',hp:18,atk:8,arch:'escort',script:[{atk:8},{atk:8},{atk:13}]},
+    X:{name:'보스킹',hp:60,atk:12,arch:'boss',script:[{atk:12},{atk:9},{atk:9},{atk:20}]},
+  },
+  LAYOUT:['...prX','...pnr','...ppp','PPP...','RNP...','KRP...'],
+  ENERGY_PER_TURN:3, HAND_SIZE:5,
+  CARDS:{
+    strike: {name:'타격',cost:1,kind:'damage',value:5,desc:'5 데미지'},
+    guard:  {name:'방패',cost:1,kind:'block',value:5,desc:'방어 5'},
+    bash:   {name:'강타',cost:2,kind:'damage',value:9,desc:'9 데미지'},
+    check:  {name:'견제',cost:1,kind:'damage_weaken',value:3,weaken:2,desc:'3 데미지 + 적 다음 공격 -2'},
+    support:{name:'지원 사격',cost:1,kind:'damage_adj',per:3,desc:'인접 아군 1기당 3 데미지'},
+    legion: {name:'군단의 방패',cost:1,kind:'block_adj',per:4,desc:'인접 아군 1기당 방어 4'},
+  },
+  // 보유 카드 풀 (덱빌딩에서 이 수량 안에서 구성)
+  OWNED:{strike:6,guard:5,bash:2,check:2,support:3,legion:2},
+  // 기본(추천) 덱 = 스펙 3.6 시작덱
+  DEFAULT_DECK:{strike:4,guard:3,bash:1,check:1,support:2,legion:1},
+  DECK_SIZE:12,
+  SIEGE_BONUS:{damagePerPiece:5},
+};
+
+/* ============================================================
+   메타: 계정 · 저장
+   ============================================================ */
+const LS_KEY='cardgame_account_v1';
+let account = { username:null, deck:{...CONFIG.DEFAULT_DECK} };
+
+function saveAccount(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(account)); }catch(e){/* 파일모드 등 폴백: 메모리 유지 */} }
+function loadAccount(user){
+  try{ const raw=localStorage.getItem(LS_KEY); if(raw){ const a=JSON.parse(raw); if(a&&a.username===user) return a; } }catch(e){}
+  return null;
+}
+const deckTotal = d=>Object.values(d).reduce((a,b)=>a+b,0);
+
+/* ---------- 화면 전환 ---------- */
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+id).classList.add('active');
+  window.scrollTo(0,0);
+}
+
+/* ---------- 로그인 ---------- */
+function doLogin(user){
+  account.username = user;
+  const saved = loadAccount(user);
+  account.deck = saved ? saved.deck : {...CONFIG.DEFAULT_DECK};
+  saveAccount();
+  document.getElementById('acc-name').textContent=user;
+  document.getElementById('acc-hello').textContent=`${user} 커맨더, 환영합니다`;
+  renderDeckSummary();
+  showScreen('account');
+}
+document.getElementById('btn-login').addEventListener('click',()=>{
+  const u=document.getElementById('in-user').value.trim();
+  const err=document.getElementById('login-err');
+  if(!u){ err.textContent='아이디를 입력하세요 (또는 게스트로 시작).'; return; }
+  err.textContent=''; doLogin(u);
+});
+document.getElementById('in-user').addEventListener('keydown',e=>{ if(e.key==='Enter')document.getElementById('btn-login').click(); });
+document.getElementById('btn-guest').addEventListener('click',()=>doLogin('게스트'));
+document.getElementById('btn-logout').addEventListener('click',()=>{ showScreen('login'); });
+
+/* ---------- 계정 → 덱 요약 ---------- */
+function renderDeckSummary(){
+  const el=document.getElementById('acc-decksummary'); el.innerHTML='';
+  Object.entries(account.deck).forEach(([id,n])=>{ if(n>0){ const c=document.createElement('span'); c.className='chip'; c.innerHTML=`${CONFIG.CARDS[id].name} <b>×${n}</b>`; el.appendChild(c);} });
+  const t=document.createElement('span'); t.className='chip'; t.innerHTML=`합계 <b>${deckTotal(account.deck)}</b>/${CONFIG.DECK_SIZE}`; el.appendChild(t);
+}
+document.getElementById('btn-todeck').addEventListener('click',()=>{ openDeckBuilder(); });
+document.getElementById('btn-play').addEventListener('click',()=>{ launchGame(); });
+document.getElementById('btn-toaccount').addEventListener('click',()=>{ renderDeckSummary(); showScreen('account'); });
+
+/* ============================================================
+   덱 빌더
+   ============================================================ */
+let draftDeck={};
+function openDeckBuilder(){ draftDeck={...account.deck}; renderDeckBuilder(); showScreen('deck'); }
+function renderDeckBuilder(){
+  const total=deckTotal(draftDeck);
+  const cc=document.getElementById('deckcount'); cc.textContent=`${total} / ${CONFIG.DECK_SIZE}`;
+  cc.className='count '+(total===CONFIG.DECK_SIZE?'ok':'bad');
+  // 풀
+  const pg=document.getElementById('poolgrid'); pg.innerHTML='';
+  Object.entries(CONFIG.OWNED).forEach(([id,owned])=>{
+    const card=CONFIG.CARDS[id]; const inDeck=draftDeck[id]||0;
+    const el=document.createElement('div'); el.className='pcard';
+    el.innerHTML=`<span class="cost">${card.cost}</span><div class="cn">${card.name}</div><div class="cd">${card.desc}</div>
+      <div class="row"><span class="own">덱 ${inDeck} · 보유 ${owned}</span>
+      <button class="minibtn add" ${(inDeck>=owned||total>=CONFIG.DECK_SIZE)?'disabled':''} data-add="${id}">+ 추가</button></div>`;
+    pg.appendChild(el);
+  });
+  pg.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{ const id=b.dataset.add; draftDeck[id]=(draftDeck[id]||0)+1; renderDeckBuilder(); });
+  // 덱 리스트
+  const dl=document.getElementById('decklist'); dl.innerHTML='';
+  const entries=Object.entries(draftDeck).filter(([,n])=>n>0);
+  if(!entries.length){ dl.innerHTML='<div style="color:var(--muted);font-size:12px">비어 있음</div>'; }
+  entries.forEach(([id,n])=>{ const card=CONFIG.CARDS[id];
+    const row=document.createElement('div'); row.className='dl-row';
+    row.innerHTML=`<span>${card.name} <span class="x">×${n}</span></span><button class="minibtn" data-rm="${id}">− 빼기</button>`;
+    dl.appendChild(row); });
+  dl.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{ const id=b.dataset.rm; draftDeck[id]=Math.max(0,(draftDeck[id]||0)-1); if(draftDeck[id]===0)delete draftDeck[id]; renderDeckBuilder(); });
+}
+document.getElementById('btn-defaultdeck').addEventListener('click',()=>{ draftDeck={...CONFIG.DEFAULT_DECK}; renderDeckBuilder(); document.getElementById('deck-msg').textContent=''; });
+document.getElementById('btn-savedeck').addEventListener('click',()=>{
+  const total=deckTotal(draftDeck); const msg=document.getElementById('deck-msg');
+  if(total!==CONFIG.DECK_SIZE){ msg.style.color='var(--enemy)'; msg.textContent=`덱은 정확히 ${CONFIG.DECK_SIZE}장이어야 합니다 (현재 ${total}장).`; return; }
+  account.deck={...draftDeck}; saveAccount(); renderDeckSummary();
+  msg.style.color='var(--ok)'; msg.textContent='저장 완료! 계정으로 돌아가 게임을 시작하세요.';
+});
+document.getElementById('btn-deckback').addEventListener('click',()=>{ renderDeckSummary(); showScreen('account'); });
+
+/* ============================================================
+   게임 실행 진입점
+   ============================================================ */
+function launchGame(){ showScreen('game'); initGame(); }
+function playerDeckFlat(){ const arr=[]; Object.entries(account.deck).forEach(([id,n])=>{for(let i=0;i<n;i++)arr.push(id);}); return arr; }
+
+/* ============================================================
+   ↓↓↓ 게임 엔진 (보드 + 카드 전투) — 덱은 account.deck 사용 ↓↓↓
+   ============================================================ */
+const N=CONFIG.BOARD_SIZE;
+const inb=(r,c)=>r>=0&&r<N&&c>=0&&c<N;
+const FILES='abcdefghijklmnopqrstuvwxyz';
+const coordName=(r,c)=>`${FILES[r]||'?'}${c+1}`;
+const DIAG=[[-1,-1],[-1,1],[1,-1],[1,1]],ORTH=[[-1,0],[1,0],[0,-1],[0,1]];
+const KING8=[...DIAG,...ORTH];
+const KNIGHT=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+const PAWN_MOVE=[[-1,1],[-1,0],[0,1]],PAWN_CAP=[[-1,0],[0,1]];
+
+let pieces=[],monsters=[];
+let state={turn:0,combats:0,combatTurns:0,phase:'player',selected:null,over:false,timer:null,monsterCursor:0,awaitingCombat:false};
+
+function buildFromLayout(){
+  pieces=[];monsters=[];let pid=0,mid=0;
+  CONFIG.LAYOUT.forEach((row,r)=>[...row].forEach((ch,c)=>{
+    if('PBNRK'.includes(ch))pieces.push({id:'p'+(pid++),kind:ch,hp:CONFIG.PIECE_HP[ch],max:CONFIG.PIECE_HP[ch],r,c,alive:true});
+    else if('gwoprnX'.includes(ch)){const m=CONFIG.MONSTER[ch];monsters.push({id:'m'+(mid++),type:ch,name:m.name,hp:m.hp,max:m.hp,atk:m.atk,arch:m.arch,r,c,alive:true});}
+  }));
+}
+const pieceAt=(r,c)=>pieces.find(p=>p.alive&&p.r===r&&p.c===c);
+const monAt=(r,c)=>monsters.find(m=>m.alive&&m.r===r&&m.c===c);
+const occupied=(r,c)=>pieceAt(r,c)||monAt(r,c);
+const boss=()=>monsters.find(m=>m.alive&&m.type==='X');
+const pKing=()=>pieces.find(p=>p.alive&&p.kind==='K');
+
+function pieceTargets(p){
+  const moves=[],caps=[];
+  const slide=(dirs)=>{for(const[dr,dc]of dirs){let r=p.r+dr,c=p.c+dc;
+    while(inb(r,c)){const o=occupied(r,c);if(!o){moves.push([r,c]);}else{if(monAt(r,c)&&monAt(r,c).type!=='X')caps.push([r,c]);break;}r+=dr;c+=dc;}}};
+  if(p.kind==='P'){for(const[dr,dc]of PAWN_MOVE){const r=p.r+dr,c=p.c+dc;if(inb(r,c)&&!occupied(r,c))moves.push([r,c]);}
+    for(const[dr,dc]of PAWN_CAP){const r=p.r+dr,c=p.c+dc;const m=inb(r,c)&&monAt(r,c);if(m&&m.type!=='X')caps.push([r,c]);}}
+  else if(p.kind==='B')slide(DIAG); else if(p.kind==='R')slide(ORTH);
+  else if(p.kind==='N'){for(const[dr,dc]of KNIGHT){const r=p.r+dr,c=p.c+dc;if(!inb(r,c))continue;const o=occupied(r,c);if(!o)moves.push([r,c]);else if(monAt(r,c)&&monAt(r,c).type!=='X')caps.push([r,c]);}}
+  else if(p.kind==='K'){for(const[dr,dc]of KING8){const r=p.r+dr,c=p.c+dc;if(!inb(r,c))continue;const o=occupied(r,c);if(!o)moves.push([r,c]);else if(monAt(r,c)&&monAt(r,c).type!=='X')caps.push([r,c]);}}
+  return {moves,caps};
+}
+function pieceThreat(p){
+  const cells=[];
+  const slide=(dirs)=>{for(const[dr,dc]of dirs){let r=p.r+dr,c=p.c+dc;while(inb(r,c)){cells.push([r,c]);if(occupied(r,c))break;r+=dr;c+=dc;}}};
+  if(p.kind==='P'){for(const[dr,dc]of PAWN_CAP){const r=p.r+dr,c=p.c+dc;if(inb(r,c))cells.push([r,c]);}}
+  else if(p.kind==='B')slide(DIAG); else if(p.kind==='R')slide(ORTH);
+  else if(p.kind==='N'){for(const[dr,dc]of KNIGHT){const r=p.r+dr,c=p.c+dc;if(inb(r,c))cells.push([r,c]);}}
+  else if(p.kind==='K'){for(const[dr,dc]of KING8){const r=p.r+dr,c=p.c+dc;if(inb(r,c))cells.push([r,c]);}}
+  return cells;
+}
+function threatMap(){const m={};pieces.filter(p=>p.alive).forEach(p=>pieceThreat(p).forEach(([r,c])=>{const k=r+','+c;m[k]=(m[k]||0)+1;}));return m;}
+const isThreatened=(tm,r,c)=>!!tm[r+','+c];
+function adjacentAllies(r,c){return pieces.filter(p=>p.alive&&Math.max(Math.abs(p.r-r),Math.abs(p.c-c))===1).length;}
+function siegeCount(){const b=boss();if(!b)return 0;let s=0;pieces.filter(p=>p.alive).forEach(p=>{if(pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c))s++;});return s;}
+
+const boardEl=document.getElementById('board');
+function render(){
+  boardEl.style.gridTemplateColumns=`repeat(${N}, var(--cell-size))`;
+  boardEl.classList.toggle('diamond',CONFIG.DIAMOND_VIEW);
+  document.getElementById('stage').classList.toggle('diamond',CONFIG.DIAMOND_VIEW);
+  boardEl.innerHTML='';
+  const tm=threatMap();const sel=state.selected;let hl={moves:[],caps:[]};if(sel)hl=pieceTargets(sel);
+  const inList=(arr,r,c)=>arr.some(([a,b])=>a===r&&b===c);
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+    const cell=document.createElement('div');cell.className='cell'+(((r+c)%2)?' alt':'');
+    if(isThreatened(tm,r,c))cell.classList.add('threat');
+    if(inList(hl.moves,r,c))cell.classList.add('move');
+    if(inList(hl.caps,r,c))cell.classList.add('cap');
+    const co=document.createElement('div');co.className='coord';co.textContent=coordName(r,c);cell.appendChild(co);
+    const p=pieceAt(r,c),m=monAt(r,c);
+    if(p){const el=document.createElement('div');el.className='piece p';
+      if(sel&&sel.id===p.id)cell.classList.add('selected');
+      if(state.phase==='player'&&!state.over)el.classList.add('selectable');
+      el.innerHTML=`<span class="g">${p.kind}</span><span class="st">${p.hp}❤</span>`;
+      el.onclick=(e)=>{e.stopPropagation();onPieceClick(p);};cell.appendChild(el);
+    }else if(m){const el=document.createElement('div');el.className='piece '+(m.type==='X'?'boss':'e');
+      const glyph=m.type==='X'?'♛':m.type.toUpperCase();
+      el.innerHTML=`<span class="g">${glyph}</span><span class="st">${m.hp}❤ ${m.atk}⚔</span>`;cell.appendChild(el);}
+    cell.onclick=()=>onCellClick(r,c);boardEl.appendChild(cell);
+  }
+  updatePanel();
+}
+function updatePanel(){
+  document.getElementById('s-turn').textContent=state.turn;
+  document.getElementById('s-combat').textContent=state.combats;
+  document.getElementById('s-cturns').textContent=state.combatTurns;
+  document.getElementById('s-mon').textContent=monsters.filter(m=>m.alive).length;
+  document.getElementById('s-ally').textContent=pieces.filter(p=>p.alive).length;
+  document.getElementById('s-siege').textContent=siegeCount();
+}
+function onPieceClick(p){if(state.over||state.phase!=='player'||state.awaitingCombat)return;
+  state.selected=(state.selected&&state.selected.id===p.id)?null:p;render();}
+function onCellClick(r,c){if(state.over||state.phase!=='player'||!state.selected||state.awaitingCombat)return;
+  const {moves,caps}=pieceTargets(state.selected);
+  if(caps.some(([a,b])=>a===r&&b===c)){const atk=state.selected;state.selected=null;startCombat(atk,monAt(r,c),{initiator:'player'});}
+  else if(moves.some(([a,b])=>a===r&&b===c)){movePiece(state.selected,r,c);endPlayerTurn();}}
+function movePiece(p,r,c){p.r=r;p.c=c;state.selected=null;}
+
+function endPlayerTurn(){if(state.over||state.awaitingCombat)return;
+  state.turn++;state.phase='monster';render();
+  state.timer=setTimeout(()=>{state.timer=null;monsterPhase();if(!state.awaitingCombat)afterMonster();},220);}
+function afterMonster(){if(state.over)return;state.phase='player';render();checkMate();}
+const cheby=(a,b,r,c)=>Math.max(Math.abs(a-r),Math.abs(b-c));
+
+function monsterPhase(){
+  if(!monsters.length)return;
+  for(let i=0;i<monsters.length;i++){
+    const idx=(state.monsterCursor+i)%monsters.length;const m=monsters[idx];
+    if(!m.alive||state.over||m.arch==='boss')continue;
+    let acted=false;
+    if(m.arch==='hunter')acted=hunter(m);
+    else if(m.arch==='interceptor')acted=interceptor(m);
+    else if(m.arch==='escort')acted=escort(m);
+    if(acted){state.monsterCursor=(idx+1)%monsters.length;return;}
+  }
+}
+function stepToward(m,tr,tc){let best=null,bd=cheby(m.r,m.c,tr,tc);
+  for(const[dr,dc]of KING8){const r=m.r+dr,c=m.c+dc;if(!inb(r,c)||occupied(r,c))continue;const d=cheby(r,c,tr,tc);if(d<bd){bd=d;best=[r,c];}}
+  if(best){m.r=best[0];m.c=best[1];return true;}return false;}
+const adjacentTo=(m,r,c)=>cheby(m.r,m.c,r,c)===1;
+function hunter(m){const k=pKing();if(!k)return false;
+  if(adjacentTo(m,k.r,k.c)){startCombat(k,m,{initiator:'monster'});return true;}
+  let target=null,bd=99;
+  for(const[dr,dc]of KING8){const r=m.r+dr,c=m.c+dc;if(!inb(r,c)||occupied(r,c))continue;if(cheby(r,c,k.r,k.c)===1){const d=cheby(m.r,m.c,r,c);if(d<bd){bd=d;target=[r,c];}}}
+  if(target){m.r=target[0];m.c=target[1];return true;}return stepToward(m,k.r,k.c);}
+function interceptor(m){let near=null,nd=99;
+  pieces.filter(p=>p.alive).forEach(p=>{const d=cheby(m.r,m.c,p.r,p.c);if(d<nd){nd=d;near=p;}});
+  if(!near)return false;if(adjacentTo(m,near.r,near.c)){startCombat(near,m,{initiator:'monster'});return true;}return stepToward(m,near.r,near.c);}
+function escort(m){const b=boss();if(!b)return interceptor(m);
+  let victim=null;pieces.filter(p=>p.alive).forEach(p=>{if(cheby(b.r,b.c,p.r,p.c)<=1&&adjacentTo(m,p.r,p.c))victim=p;});
+  if(victim){startCombat(victim,m,{initiator:'monster'});return true;}
+  if(cheby(m.r,m.c,b.r,b.c)>1)return stepToward(m,b.r,b.c);return false;}
+
+function checkMate(){
+  const b=boss();if(!b||state.over||state.awaitingCombat)return;
+  const tm=threatMap();const curThreat=isThreatened(tm,b.r,b.c);
+  const exits=[];for(const[dr,dc]of KING8){const r=b.r+dr,c=b.c+dc;if(inb(r,c)&&!occupied(r,c))exits.push([r,c]);}
+  const safeExits=exits.filter(([r,c])=>!isThreatened(tm,r,c));
+  if(curThreat&&safeExits.length===0){
+    const siege=siegeCount();
+    const champs=pieces.filter(p=>p.alive&&pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c));
+    const champ=champs.sort((a,b2)=>b2.hp-a.hp)[0]||pKing();
+    log(`<span class="win">♛ 체크메이트!</span> 보스전 — 포위 ${siege}기 · 도전자 ${champ.kind} · 보너스 +${siege*CONFIG.SIEGE_BONUS.damagePerPiece} dmg`,'win');
+    startCombat(champ,b,{initiator:'siege',siege});return;
+  }
+  if(curThreat){log('<span class="t">체크 — 보스킹 회피</span>');
+    if(safeExits.length){const attackers=pieces.filter(p=>p.alive&&pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c));
+      let best=safeExits[0],bs=-1;safeExits.forEach(([r,c])=>{let s=99;attackers.forEach(a=>s=Math.min(s,cheby(r,c,a.r,a.c)));if(s>bs){bs=s;best=[r,c];}});
+      b.r=best[0];b.c=best[1];render();}}
+}
+
+/* ---------- 카드 전투 ---------- */
+let CB=null;
+const combatEl=document.getElementById('combat');
+const cLogEl=document.getElementById('c-log');
+function cLog(html){const d=document.createElement('div');d.innerHTML=html;cLogEl.appendChild(d);cLogEl.scrollTop=cLogEl.scrollHeight;}
+function shuffle(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function startCombat(piece,mon,opts){
+  state.awaitingCombat=true;state.combats++;
+  const monDef=CONFIG.MONSTER[mon.type];
+  CB={piece,mon,opts,
+    ally:{hp:piece.hp,max:piece.max,block:0,kind:piece.kind},
+    enemy:{hp:mon.hp,max:mon.max,name:mon.name,script:monDef.script,step:0},
+    adj:adjacentAllies(piece.r,piece.c),
+    energy:CONFIG.ENERGY_PER_TURN,draw:shuffle(playerDeckFlat()),discard:[],hand:[],weaken:0,turn:1,over:false};
+  cLogEl.innerHTML='';
+  const initTxt=opts.initiator==='player'?'플레이어 공격':(opts.initiator==='siege'?'보스전(포위)':'상대 공격(수비)');
+  cLog(`<span class="sys">— ${initTxt}: ${CB.ally.kind}(${CB.ally.hp}) vs ${CB.enemy.name}(${CB.enemy.hp}) · 인접 아군 ${CB.adj}기 —</span>`);
+  if(opts.initiator==='siege'&&opts.siege>0){const bonus=opts.siege*CONFIG.SIEGE_BONUS.damagePerPiece;
+    CB.enemy.hp=Math.max(0,CB.enemy.hp-bonus);cLog(`<span class="dmg">포위 보너스 시작 데미지 ${bonus} → ${CB.enemy.name} HP ${CB.enemy.hp}</span>`);}
+  combatEl.style.display='flex';
+  if(CB.enemy.hp<=0){cbEnd(true);return;}
+  cbStartTurn();
+}
+function cbStartTurn(){CB.ally.block=0;CB.energy=CONFIG.ENERGY_PER_TURN;cbDraw(CONFIG.HAND_SIZE);cbRender();}
+function cbDraw(n){for(let i=0;i<n;i++){if(CB.draw.length===0){if(CB.discard.length===0)break;CB.draw=shuffle(CB.discard);CB.discard=[];cLog('<span class="sys">버림 더미 리셋</span>');}CB.hand.push(CB.draw.pop());}}
+const cbAction=()=>CB.enemy.script[CB.enemy.step%CB.enemy.script.length];
+function cbCardVal(card){if(card.kind==='damage_adj'||card.kind==='block_adj')return card.per*CB.adj;return card.value;}
+function cbPlay(idx){if(CB.over)return;const id=CB.hand[idx],card=CONFIG.CARDS[id];if(CB.energy<card.cost)return;CB.energy-=card.cost;const val=cbCardVal(card);
+  if(card.kind==='damage'||card.kind==='damage_adj')cbDeal(val,card.name);
+  else if(card.kind==='damage_weaken'){cbDeal(val,card.name);CB.weaken+=card.weaken;cLog(`<span class="en">${card.name}: 적 다음 공격 -${card.weaken}</span>`);}
+  else if(card.kind==='block'||card.kind==='block_adj'){CB.ally.block+=val;cLog(`<span class="blk">${card.name}: 방어 +${val} (누적 ${CB.ally.block})</span>`);}
+  CB.hand.splice(idx,1);CB.discard.push(id);if(CB.enemy.hp<=0){cbEnd(true);return;}cbRender();}
+function cbDeal(dmg,src){CB.enemy.hp=Math.max(0,CB.enemy.hp-dmg);cLog(`<span class="dmg">${src}: ${dmg} 피해 → ${CB.enemy.name} HP ${CB.enemy.hp}</span>`);cbFloat('enemy',`-${dmg}`);}
+function cbEndTurn(){if(CB.over)return;CB.discard.push(...CB.hand);CB.hand=[];cbRender();cbEnemyTurn();}
+function cbEnemyTurn(){if(CB.over)return;const act=cbAction();
+  if(act.atk!=null){let dmg=Math.max(0,act.atk-CB.weaken);CB.weaken=0;const blk=Math.min(CB.ally.block,dmg),thr=dmg-blk;CB.ally.block-=blk;CB.ally.hp=Math.max(0,CB.ally.hp-thr);
+    cLog(`<span class="en">${CB.enemy.name} 공격 ${act.atk}</span> — ${blk} 막고 <span class="dmg">${thr} 피해</span> → 아군 HP ${CB.ally.hp}`);if(thr>0)cbFloat('ally',`-${thr}`);}
+  CB.enemy.step++;if(CB.ally.hp<=0){cbEnd(false);return;}CB.turn++;cbStartTurn();}
+function cbEnd(win){
+  CB.over=true;state.combatTurns+=CB.turn;cbRender();
+  CB.piece.hp=CB.ally.hp;CB.mon.hp=CB.enemy.hp;
+  if(win){cLog(`<span class="win">▶ 승리 — ${CB.enemy.name} 캡처 (아군 HP ${CB.ally.hp} 이월)</span>`);CB.mon.alive=false;
+    if(CB.opts.initiator==='player'){CB.piece.r=CB.mon.r;CB.piece.c=CB.mon.c;}
+    log(`<span class="cmb">⚔ 전투 #${state.combats}</span> ${CB.enemy.name} 캡처 · ${CB.turn}턴 · ${CB.piece.kind} HP ${CB.piece.hp}`,'cmb');
+  }else{cLog(`<span class="lose">▶ 패배 — ${CB.ally.kind} 사망 (${CB.enemy.name} HP ${CB.enemy.hp} 이월)</span>`);CB.piece.alive=false;
+    log(`<span class="cmb">⚔ 전투 #${state.combats}</span> ${CB.piece.kind} 사망 · ${CB.turn}턴 · ${CB.enemy.name} HP ${CB.enemy.hp}`,'cmb');}
+  setTimeout(()=>{combatEl.style.display='none';resolveCombat(win);},700);
+}
+function resolveCombat(win){
+  const init=CB.opts.initiator;const wasKing=(CB.piece.kind==='K'&&!CB.piece.alive);
+  state.awaitingCombat=false;CB=null;
+  if(wasKing){endGame(false,'플레이어 킹 사망');return;}
+  if(win&&init==='siege'){endGame(true,`보스전 승리! 스테이지 클리어 (턴 ${state.turn} · 전투 ${state.combats}회)`);return;}
+  render();
+  if(init==='player')endPlayerTurn(); else afterMonster();
+}
+function cbRender(){
+  const a=CB.ally,e=CB.enemy;
+  document.getElementById('c-title').innerHTML=`전투 · <b>${a.kind}</b> vs <b>${e.name}</b> · ${CB.turn}턴`;
+  document.getElementById('c-ally-name').textContent=`${a.kind} (아군)`;
+  document.getElementById('c-ally-hp').style.width=(100*a.hp/a.max)+'%';
+  document.getElementById('c-ally-hptext').textContent=`${a.hp} / ${a.max} ❤`;
+  const ab=document.getElementById('c-ally-block');ab.textContent=`방어 ${a.block}`;ab.style.display=a.block>0?'inline-block':'none';
+  document.getElementById('c-enemy-name').textContent=e.name;
+  document.getElementById('c-enemy-hp').style.width=(100*e.hp/e.max)+'%';
+  document.getElementById('c-enemy-hptext').textContent=`${e.hp} / ${e.max} ❤`;
+  const act=cbAction();const shown=Math.max(0,(act.atk||0)-(CB.weaken||0));
+  document.getElementById('c-intent').innerHTML=CB.over?'–':`⚔ 공격 ${shown}<small>다음 행동 예고${CB.weaken?` · 견제 -${CB.weaken}`:''}</small>`;
+  document.getElementById('c-energy').textContent=`⚡ ${CB.energy} / ${CONFIG.ENERGY_PER_TURN}`;
+  document.getElementById('c-piles').textContent=`뽑을 ${CB.draw.length} · 버림 ${CB.discard.length}`;
+  const h=document.getElementById('c-hand');h.innerHTML='';
+  CB.hand.forEach((id,idx)=>{const card=CONFIG.CARDS[id];const val=cbCardVal(card);const ok=CB.energy>=card.cost&&!CB.over;
+    const el=document.createElement('div');el.className='cardc'+(ok?'':' disabled');
+    let dyn=(card.kind==='damage_adj'||card.kind==='block_adj')?` <b>(현재 ${val})</b>`:'';
+    el.innerHTML=`<span class="cost">${card.cost}</span><div class="cname">${card.name}</div><div class="cdesc">${card.desc}${dyn}</div><div class="ctag">${card.kind.includes('block')?'🛡 방어':'🗡 공격'}</div>`;
+    if(ok)el.onclick=()=>cbPlay(idx);h.appendChild(el);});
+}
+function cbFloat(side,txt){const f=document.querySelector('.fighter.'+side);if(!f)return;const d=document.createElement('div');d.className='float';d.style.color='var(--dmg)';d.textContent=txt;f.appendChild(d);setTimeout(()=>d.remove(),900);}
+document.getElementById('c-endturn').addEventListener('click',cbEndTurn);
+
+function endGame(win,msg){
+  state.over=true;state.phase='over';
+  log((win?'<span class="win">▶ 승리':'<span class="lose">▶ 패배')+` — ${msg}</span>`,win?'win':'lose');render();
+  document.getElementById('b-title').textContent=win?'🏆 스테이지 클리어':'💀 스테이지 패배';
+  document.getElementById('b-msg').textContent=msg+`  (턴 ${state.turn} · 전투 ${state.combats}회)`;
+  document.getElementById('banner').style.display='flex';
+}
+const logEl=document.getElementById('log');
+function log(html){const d=document.createElement('div');d.innerHTML=html;logEl.appendChild(d);logEl.scrollTop=logEl.scrollHeight;}
+
+function initGame(){
+  if(state.timer)clearTimeout(state.timer);
+  state={turn:0,combats:0,combatTurns:0,phase:'player',selected:null,over:false,timer:null,monsterCursor:0,awaitingCombat:false};
+  document.getElementById('banner').style.display='none';
+  document.getElementById('combat').style.display='none';
+  logEl.innerHTML='';CB=null;
+  buildFromLayout();
+  log(`<span class="t">— ${account.username} 커맨더의 덱(${deckTotal(account.deck)}장)으로 시작 —</span>`);
+  render();
+}
+document.getElementById('btn-restartgame').addEventListener('click',initGame);
+document.getElementById('restartBanner').addEventListener('click',()=>{document.getElementById('banner').style.display='none';renderDeckSummary();showScreen('account');});
+
+/* 시작: 로그인 화면 */
+showScreen('login');
+</script>
+</body>
+</html>

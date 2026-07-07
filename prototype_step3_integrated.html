@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>보드×카드 하이브리드 — 프로토타입 [3단계: 통합]</title>
+<style>
+  :root{
+    --bg:#12141c; --panel:#1b1e2b; --line:#2c3145; --ink:#e8ebf5; --muted:#8b93ad;
+    --player:#3f7fff; --enemy:#e0533d; --boss:#c341e0; --cell:#232839; --cell2:#1d2231;
+    --move:#2f6f4d; --cap:#8a3030; --threat:#3a2740; --sel:#d8a12a;
+    --energy:#ffcf6b; --block:#7fd6ff; --dmg:#ff8a6b;
+    --card:#232b41; --cardEdge:#3a456b;
+    --cell-size:clamp(44px, 10vw, 76px); --board-gap:3px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px}
+  .wrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  h1{font-size:16px;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:12px;margin-bottom:12px}
+  #boardWrap{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  #stage{display:flex;align-items:center;justify-content:center;max-width:100%}
+  #board{display:grid;gap:var(--board-gap);background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;transition:transform .25s}
+  #stage.diamond{width:min(700px, calc(100vw - 36px));aspect-ratio:1}
+  #board.diamond{transform:rotate(-45deg)}
+  #board.diamond .piece,#board.diamond .coord{transform:rotate(45deg)}
+  .cell{position:relative;width:var(--cell-size);height:var(--cell-size);background:var(--cell);display:flex;align-items:center;justify-content:center;cursor:default;user-select:none}
+  .cell.alt{background:var(--cell2)}
+  .cell.move{outline:3px solid var(--move);outline-offset:-3px;cursor:pointer}
+  .cell.cap{outline:3px solid var(--cap);outline-offset:-3px;cursor:pointer}
+  .cell.threat::after{content:"";position:absolute;inset:0;background:var(--threat);opacity:.5;pointer-events:none}
+  .cell.selected{outline:3px solid var(--sel);outline-offset:-3px}
+  .coord{position:absolute;top:2px;left:3px;font-size:9px;color:#4a5170}
+  .piece{width:calc(var(--cell-size) * .78);height:calc(var(--cell-size) * .78);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,.4);cursor:pointer;position:relative;z-index:2}
+  .piece.p{background:var(--player)} .piece.e{background:var(--enemy)} .piece.boss{background:var(--boss)}
+  .piece .g{font-weight:700;font-size:17px}
+  .piece .st{font-size:9px;margin-top:2px;opacity:.95}
+  .piece.selectable{cursor:pointer} .piece.selectable:hover{filter:brightness(1.15)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;width:300px}
+  .panel h2{font-size:13px;margin:0 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line)}
+  .stat b{font-variant-numeric:tabular-nums}
+  #log{height:200px;overflow-y:auto;background:#0e1017;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px;font-family:ui-monospace,Menlo,monospace;line-height:1.5}
+  #log .t{color:var(--muted)} #log .cmb{color:#ffcf6b} #log .win{color:#5be08a} #log .lose{color:#ff7a6b}
+  .btn{background:var(--player);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer;margin-top:8px;width:100%}
+  .btn.sec{background:#333a52}
+  .banner{position:fixed;inset:0;background:rgba(8,9,14,.85);display:none;align-items:center;justify-content:center;z-index:60}
+  .banner .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 34px;text-align:center;max-width:420px}
+  .banner h3{margin:0 0 8px;font-size:22px}
+  .legend{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.7}
+  .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
+  .turnOf{font-size:12px;color:var(--muted);margin-top:6px}
+  .flagbox{background:#2a2033;border:1px solid #4a3358;border-radius:8px;padding:9px;font-size:11px;color:#e2c8f0;margin-top:12px;line-height:1.6}
+  @media (max-width: 760px){ .wrap{padding:12px;gap:12px} #boardWrap,.panel{width:100%} #boardWrap{padding:10px} .panel{padding:12px} }
+
+  /* ---------- 전투 오버레이 ---------- */
+  #combat{position:fixed;inset:0;background:rgba(8,9,14,.92);display:none;align-items:center;justify-content:center;z-index:50;padding:16px}
+  #combat .arena{width:min(760px,100%);background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;max-height:96vh;overflow:auto}
+  #combat .ctitle{font-size:14px;margin:0 0 12px;color:var(--muted)}
+  #combat .ctitle b{color:var(--ink)}
+  .combatants{display:flex;justify-content:space-between;gap:16px;margin-bottom:10px}
+  .fighter{flex:1;background:#0f131e;border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center;position:relative}
+  .fighter h3{margin:0 0 6px;font-size:14px}
+  .fighter.ally h3{color:var(--player)} .fighter.enemy h3{color:var(--enemy)}
+  .hpbar{height:15px;background:#2a2030;border-radius:8px;overflow:hidden;margin:6px 0 4px}
+  .hpfill{height:100%;background:linear-gradient(90deg,#4bd07a,#7fe0a0);transition:width .3s}
+  .fighter.enemy .hpfill{background:linear-gradient(90deg,#e0533d,#ff8a6b)}
+  .hptext{font-variant-numeric:tabular-nums;font-size:13px}
+  .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;margin-top:6px;border:1px solid var(--block);color:var(--block);background:rgba(127,214,255,.12)}
+  .intent{margin-top:8px;font-size:13px;color:var(--enemy);font-weight:600}
+  .intent small{display:block;color:var(--muted);font-weight:400;font-size:11px}
+  .energyrow{display:flex;align-items:center;gap:10px;margin:6px 0 12px}
+  .energy{font-size:15px;font-weight:700;color:var(--energy)}
+  .hand{display:flex;gap:10px;flex-wrap:wrap;min-height:150px;align-items:flex-end}
+  .cardc{width:110px;min-height:150px;background:var(--card);border:1px solid var(--cardEdge);border-radius:10px;padding:9px;cursor:pointer;display:flex;flex-direction:column;transition:transform .12s;position:relative}
+  .cardc:hover{transform:translateY(-6px)}
+  .cardc.disabled{opacity:.4;cursor:not-allowed;transform:none}
+  .cardc .cost{position:absolute;top:-8px;left:-8px;width:24px;height:24px;border-radius:50%;background:var(--energy);color:#1a1400;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px}
+  .cardc .cname{font-weight:700;font-size:13px;margin-bottom:6px}
+  .cardc .cdesc{font-size:11px;color:#c7cde0;line-height:1.4;flex:1}
+  .cardc .ctag{font-size:10px;color:var(--muted);margin-top:6px}
+  .controls{display:flex;gap:10px;margin-top:14px;align-items:center;flex-wrap:wrap}
+  .piles{margin-left:auto;color:var(--muted);font-size:12px}
+  #c-log{height:120px;overflow-y:auto;background:#0e1017;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px;font-family:ui-monospace,Menlo,monospace;line-height:1.5;margin-top:12px}
+  #c-log .dmg{color:var(--dmg)} #c-log .blk{color:var(--block)} #c-log .sys{color:var(--muted)} #c-log .en{color:var(--enemy)} #c-log .win{color:#5be08a} #c-log .lose{color:#ff7a6b}
+  .float{position:absolute;top:26%;left:50%;font-weight:800;font-size:22px;pointer-events:none;animation:rise .9s ease-out forwards}
+  @keyframes rise{from{opacity:1;transform:translate(-50%,0)}to{opacity:0;transform:translate(-50%,-40px)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <h1>보드×카드 하이브리드 — 프로토타입</h1>
+    <div class="sub">3단계 · 통합 (보드 + 카드 전투 + HP 지속성 + 포위 보너스)</div>
+    <div id="boardWrap"><div id="stage"><div id="board"></div></div>
+      <div class="legend">
+        <span class="swatch" style="background:var(--move)"></span>이동
+        <span class="swatch" style="background:var(--cap)"></span>캡처(전투)
+        <span class="swatch" style="background:var(--threat)"></span>내 위협범위
+        <span class="swatch" style="background:var(--sel)"></span>선택됨
+        <br>기물 클릭 → 이동/캡처. 몬스터 캡처 클릭 시 <b>카드 전투</b> 발동. 파랑=아군, 빨강=상대, 보라=보스킹.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>플레이 로그 (검증 Q1)</h2>
+    <div class="stat"><span>턴 수</span><b id="s-turn">0</b></div>
+    <div class="stat"><span>전투 발생</span><b id="s-combat">0</b></div>
+    <div class="stat"><span>전투 소요 턴(누적)</span><b id="s-cturns">0</b></div>
+    <div class="stat"><span>남은 상대</span><b id="s-mon">0</b></div>
+    <div class="stat"><span>남은 아군</span><b id="s-ally">0</b></div>
+    <div class="stat"><span>보스 위협(포위)</span><b id="s-siege">0</b></div>
+    <div class="turnOf" id="phase">플레이어 차례 — 기물을 선택하세요</div>
+    <div style="margin-top:12px"></div>
+    <h2>이벤트 로그</h2>
+    <div id="log"></div>
+    <button class="btn sec" id="restart">↻ 재시작</button>
+    <div class="flagbox" id="flag"></div>
+  </div>
+</div>
+
+<!-- 전투 오버레이 -->
+<div id="combat"><div class="arena">
+  <div class="ctitle" id="c-title"></div>
+  <div class="combatants">
+    <div class="fighter ally">
+      <h3 id="c-ally-name">아군</h3>
+      <div class="hpbar"><div class="hpfill" id="c-ally-hp"></div></div>
+      <div class="hptext" id="c-ally-hptext">–</div>
+      <span class="badge" id="c-ally-block">방어 0</span>
+    </div>
+    <div class="fighter enemy">
+      <h3 id="c-enemy-name">상대</h3>
+      <div class="hpbar"><div class="hpfill" id="c-enemy-hp"></div></div>
+      <div class="hptext" id="c-enemy-hptext">–</div>
+      <div class="intent" id="c-intent">–</div>
+    </div>
+  </div>
+  <div class="energyrow"><span class="energy" id="c-energy">⚡ 3 / 3</span>
+    <span style="color:var(--muted);font-size:11px">카드 클릭 사용 · 인접 아군은 보드에서 자동 계산</span></div>
+  <div class="hand" id="c-hand"></div>
+  <div class="controls">
+    <button class="btn" id="c-endturn" style="width:auto">턴 종료 ▶</button>
+    <span class="piles" id="c-piles"></span>
+  </div>
+  <div id="c-log"></div>
+</div></div>
+
+<!-- 게임 종료 배너 -->
+<div class="banner" id="banner"><div class="box">
+  <h3 id="b-title"></h3><div id="b-msg" style="color:var(--muted)"></div>
+  <button class="btn" id="restartBanner">다시 시작</button>
+</div></div>
+
+<script>
+/* ============================================================
+   CONFIG — 모든 튜닝 레버.
+   ============================================================ */
+const CONFIG = {
+  BOARD_SIZE: 6,
+  DIAMOND_VIEW: true,
+
+  PIECE_HP: { P:10, B:12, N:14, R:18, K:25 },
+
+  // 몬스터/상대: hp(스펙4.1) + atk(보드표시) + arch(보드AI) + script(전투인텐트, HP비례 자동설계)
+  //   script: {atk:n} 순환. HP가 높을수록 강한 패턴.
+  MONSTER: {
+    g:{name:'고블린',     hp:12, atk:6,  arch:'hunter',      script:[{atk:6}]},
+    w:{name:'늑대',       hp:15, atk:7,  arch:'interceptor', script:[{atk:6},{atk:6},{atk:10}]},
+    o:{name:'오크',       hp:20, atk:8,  arch:'escort',      script:[{atk:8},{atk:8},{atk:14}]},
+    p:{name:'상대 폰',    hp:10, atk:5,  arch:'hunter',      script:[{atk:5}]},
+    n:{name:'상대 나이트',hp:14, atk:7,  arch:'interceptor', script:[{atk:6},{atk:6},{atk:10}]},
+    r:{name:'상대 룩',    hp:18, atk:8,  arch:'escort',      script:[{atk:8},{atk:8},{atk:13}]},
+    X:{name:'보스킹',     hp:60, atk:12, arch:'boss',        script:[{atk:12},{atk:9},{atk:9},{atk:20}]},
+  },
+
+  LAYOUT: [
+    '...prX',
+    '...pnr',
+    '...ppp',
+    'PPP...',
+    'RNP...',
+    'KRP...',
+  ],
+
+  // 전투 상수 (스펙 3.4/3.6)
+  ENERGY_PER_TURN:3, HAND_SIZE:5,
+  CARDS: {
+    strike:  {name:'타격',       cost:1, kind:'damage',        value:5,  desc:'5 데미지'},
+    guard:   {name:'방패',       cost:1, kind:'block',         value:5,  desc:'방어 5'},
+    bash:    {name:'강타',       cost:2, kind:'damage',        value:9,  desc:'9 데미지'},
+    check:   {name:'견제',       cost:1, kind:'damage_weaken', value:3, weaken:2, desc:'3 데미지 + 적 다음 공격 -2'},
+    support: {name:'지원 사격',  cost:1, kind:'damage_adj',    per:3,   desc:'인접 아군 1기당 3 데미지'},
+    legion:  {name:'군단의 방패',cost:1, kind:'block_adj',     per:4,   desc:'인접 아군 1기당 방어 4'},
+  },
+  START_DECK: [['strike',4],['guard',3],['bash',1],['check',1],['support',2],['legion',1]],
+
+  // 포위 보너스 (스펙 2.4): 보스전 시작 시 위협 기물 1기당 시작 데미지
+  SIEGE_BONUS:{ damagePerPiece:5, drawPerPiece:0 },
+};
+
+/* ============================================================
+   기하
+   ============================================================ */
+const N = CONFIG.BOARD_SIZE;
+const inb=(r,c)=> r>=0&&r<N&&c>=0&&c<N;
+const FILES='abcdefghijklmnopqrstuvwxyz';
+const coordName=(r,c)=>`${FILES[r]||'?'}${c+1}`;
+const DIAG=[[-1,-1],[-1,1],[1,-1],[1,1]], ORTH=[[-1,0],[1,0],[0,-1],[0,1]];
+const KING8=[...DIAG,...ORTH];
+const KNIGHT=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+const PAWN_MOVE=[[-1,1],[-1,0],[0,1]], PAWN_CAP=[[-1,0],[0,1]];
+
+/* ============================================================
+   상태
+   ============================================================ */
+let pieces=[], monsters=[];
+let state={ turn:0, combats:0, combatTurns:0, phase:'player', selected:null, over:false, timer:null, monsterCursor:0, awaitingCombat:false };
+
+function buildFromLayout(){
+  pieces=[]; monsters=[]; let pid=0, mid=0;
+  CONFIG.LAYOUT.forEach((row,r)=>[...row].forEach((ch,c)=>{
+    if('PBNRK'.includes(ch)) pieces.push({id:'p'+(pid++),kind:ch,hp:CONFIG.PIECE_HP[ch],max:CONFIG.PIECE_HP[ch],r,c,alive:true});
+    else if('gwoprnX'.includes(ch)){ const m=CONFIG.MONSTER[ch]; monsters.push({id:'m'+(mid++),type:ch,name:m.name,hp:m.hp,max:m.hp,atk:m.atk,arch:m.arch,r,c,alive:true}); }
+  }));
+}
+const pieceAt=(r,c)=>pieces.find(p=>p.alive&&p.r===r&&p.c===c);
+const monAt=(r,c)=>monsters.find(m=>m.alive&&m.r===r&&m.c===c);
+const occupied=(r,c)=>pieceAt(r,c)||monAt(r,c);
+const boss=()=>monsters.find(m=>m.alive&&m.type==='X');
+const pKing=()=>pieces.find(p=>p.alive&&p.kind==='K');
+
+/* ---------- 이동/캡처 ---------- */
+function pieceTargets(p){
+  const moves=[],caps=[];
+  const slide=(dirs)=>{ for(const[dr,dc]of dirs){ let r=p.r+dr,c=p.c+dc;
+    while(inb(r,c)){ const o=occupied(r,c); if(!o){moves.push([r,c]);}
+      else{ if(monAt(r,c)&&monAt(r,c).type!=='X')caps.push([r,c]); break;} r+=dr;c+=dc; } } };
+  if(p.kind==='P'){
+    for(const[dr,dc]of PAWN_MOVE){const r=p.r+dr,c=p.c+dc; if(inb(r,c)&&!occupied(r,c))moves.push([r,c]);}
+    for(const[dr,dc]of PAWN_CAP){const r=p.r+dr,c=p.c+dc; const m=inb(r,c)&&monAt(r,c); if(m&&m.type!=='X')caps.push([r,c]);}
+  } else if(p.kind==='B')slide(DIAG);
+  else if(p.kind==='R')slide(ORTH);
+  else if(p.kind==='N'){for(const[dr,dc]of KNIGHT){const r=p.r+dr,c=p.c+dc; if(!inb(r,c))continue; const o=occupied(r,c);
+    if(!o)moves.push([r,c]); else if(monAt(r,c)&&monAt(r,c).type!=='X')caps.push([r,c]);}}
+  else if(p.kind==='K'){for(const[dr,dc]of KING8){const r=p.r+dr,c=p.c+dc; if(!inb(r,c))continue; const o=occupied(r,c);
+    if(!o)moves.push([r,c]); else if(monAt(r,c)&&monAt(r,c).type!=='X')caps.push([r,c]);}}
+  return {moves,caps};
+}
+function pieceThreat(p){
+  const cells=[];
+  const slide=(dirs)=>{for(const[dr,dc]of dirs){let r=p.r+dr,c=p.c+dc;
+    while(inb(r,c)){cells.push([r,c]); if(occupied(r,c))break; r+=dr;c+=dc;}}};
+  if(p.kind==='P'){for(const[dr,dc]of PAWN_CAP){const r=p.r+dr,c=p.c+dc; if(inb(r,c))cells.push([r,c]);}}
+  else if(p.kind==='B')slide(DIAG); else if(p.kind==='R')slide(ORTH);
+  else if(p.kind==='N'){for(const[dr,dc]of KNIGHT){const r=p.r+dr,c=p.c+dc; if(inb(r,c))cells.push([r,c]);}}
+  else if(p.kind==='K'){for(const[dr,dc]of KING8){const r=p.r+dr,c=p.c+dc; if(inb(r,c))cells.push([r,c]);}}
+  return cells;
+}
+function threatMap(){ const m={}; pieces.filter(p=>p.alive).forEach(p=>pieceThreat(p).forEach(([r,c])=>{const k=r+','+c; m[k]=(m[k]||0)+1;})); return m; }
+const isThreatened=(tm,r,c)=>!!tm[r+','+c];
+function adjacentAllies(r,c){ return pieces.filter(p=>p.alive&&Math.max(Math.abs(p.r-r),Math.abs(p.c-c))===1).length; }
+function siegeCount(){ const b=boss(); if(!b)return 0; let s=0; pieces.filter(p=>p.alive).forEach(p=>{if(pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c))s++;}); return s; }
+
+/* ============================================================
+   보드 렌더
+   ============================================================ */
+const boardEl=document.getElementById('board');
+function render(){
+  boardEl.style.gridTemplateColumns=`repeat(${N}, var(--cell-size))`;
+  boardEl.classList.toggle('diamond',CONFIG.DIAMOND_VIEW);
+  document.getElementById('stage').classList.toggle('diamond',CONFIG.DIAMOND_VIEW);
+  boardEl.innerHTML='';
+  const tm=threatMap(); const sel=state.selected;
+  let hl={moves:[],caps:[]}; if(sel)hl=pieceTargets(sel);
+  const inList=(arr,r,c)=>arr.some(([a,b])=>a===r&&b===c);
+  for(let r=0;r<N;r++)for(let c=0;c<N;c++){
+    const cell=document.createElement('div');
+    cell.className='cell'+(((r+c)%2)?' alt':'');
+    if(isThreatened(tm,r,c))cell.classList.add('threat');
+    if(inList(hl.moves,r,c))cell.classList.add('move');
+    if(inList(hl.caps,r,c))cell.classList.add('cap');
+    const co=document.createElement('div'); co.className='coord'; co.textContent=coordName(r,c); cell.appendChild(co);
+    const p=pieceAt(r,c), m=monAt(r,c);
+    if(p){
+      const el=document.createElement('div'); el.className='piece p';
+      if(sel&&sel.id===p.id)cell.classList.add('selected');
+      if(state.phase==='player'&&!state.over)el.classList.add('selectable');
+      el.innerHTML=`<span class="g">${p.kind}</span><span class="st">${p.hp}❤</span>`;
+      el.onclick=(e)=>{e.stopPropagation(); onPieceClick(p);};
+      cell.appendChild(el);
+    } else if(m){
+      const el=document.createElement('div'); el.className='piece '+(m.type==='X'?'boss':'e');
+      const glyph=m.type==='X'?'♛':m.type.toUpperCase();
+      el.innerHTML=`<span class="g">${glyph}</span><span class="st">${m.hp}❤ ${m.atk}⚔</span>`;
+      cell.appendChild(el);
+    }
+    cell.onclick=()=>onCellClick(r,c);
+    boardEl.appendChild(cell);
+  }
+  updatePanel();
+}
+function updatePanel(){
+  document.getElementById('s-turn').textContent=state.turn;
+  document.getElementById('s-combat').textContent=state.combats;
+  document.getElementById('s-cturns').textContent=state.combatTurns;
+  document.getElementById('s-mon').textContent=monsters.filter(m=>m.alive).length;
+  document.getElementById('s-ally').textContent=pieces.filter(p=>p.alive).length;
+  document.getElementById('s-siege').textContent=siegeCount();
+  document.getElementById('phase').textContent=
+    state.over?'게임 종료':(state.awaitingCombat?'전투 중…':(state.selected?`${state.selected.kind} 선택됨 — 목적지 클릭`:'플레이어 차례 — 기물을 선택하세요'));
+  document.getElementById('flag').innerHTML=
+    '⚑ 통합본: 몬스터 캡처=카드 전투. 전투 후 <b>양측 HP가 보드로 이월</b>. 체크메이트 시 포위 기물 수만큼 보스전 시작 데미지 보너스(+'+CONFIG.SIEGE_BONUS.damagePerPiece+'/기).';
+}
+
+/* ============================================================
+   보드 상호작용
+   ============================================================ */
+function onPieceClick(p){ if(state.over||state.phase!=='player'||state.awaitingCombat)return;
+  state.selected=(state.selected&&state.selected.id===p.id)?null:p; render(); }
+function onCellClick(r,c){ if(state.over||state.phase!=='player'||!state.selected||state.awaitingCombat)return;
+  const {moves,caps}=pieceTargets(state.selected);
+  if(caps.some(([a,b])=>a===r&&b===c)){ const atk=state.selected; state.selected=null; startCombat(atk, monAt(r,c), {initiator:'player'}); }
+  else if(moves.some(([a,b])=>a===r&&b===c)){ movePiece(state.selected,r,c); endPlayerTurn(); }
+}
+function movePiece(p,r,c){ p.r=r;p.c=c; state.selected=null; }
+
+/* ============================================================
+   턴 진행
+   ============================================================ */
+function endPlayerTurn(){
+  if(state.over||state.awaitingCombat)return;
+  state.turn++; state.phase='monster'; render();
+  state.timer=setTimeout(()=>{ state.timer=null; monsterPhase(); if(!state.awaitingCombat) afterMonster(); },220);
+}
+function afterMonster(){ if(state.over)return; state.phase='player'; render(); checkMate(); }
+const cheby=(a,b,r,c)=>Math.max(Math.abs(a-r),Math.abs(b-c));
+
+function monsterPhase(){
+  if(!monsters.length)return;
+  // 한 턴에 상대 1기만 행동. 단, 지목된 기물이 '할 게 없으면' 행동 가능한 다음 기물로 건너뜀.
+  for(let i=0;i<monsters.length;i++){
+    const idx=(state.monsterCursor+i)%monsters.length;
+    const m=monsters[idx];
+    if(!m.alive||state.over||m.arch==='boss')continue; // 보스는 checkMate에서 처리
+    let acted=false;
+    if(m.arch==='hunter')acted=hunter(m);
+    else if(m.arch==='interceptor')acted=interceptor(m);
+    else if(m.arch==='escort')acted=escort(m);
+    if(acted){ state.monsterCursor=(idx+1)%monsters.length; return; }
+    // acted=false → 다음 기물 시도(건너뛰기)
+  }
+  // 여기까지 왔으면 움직일 수 있는 상대가 아무도 없음 → 이번 턴은 진짜 패스
+}
+// 이동 성공 시 true 반환
+function stepToward(m,tr,tc){ let best=null,bd=cheby(m.r,m.c,tr,tc);
+  for(const[dr,dc]of KING8){const r=m.r+dr,c=m.c+dc; if(!inb(r,c)||occupied(r,c))continue;
+    const d=cheby(r,c,tr,tc); if(d<bd){bd=d;best=[r,c];}}
+  if(best){m.r=best[0];m.c=best[1]; return true;} return false; }
+const adjacentTo=(m,r,c)=>cheby(m.r,m.c,r,c)===1;
+
+// 각 AI: 행동(이동/전투)했으면 true, 할 게 없으면 false
+function hunter(m){ const k=pKing(); if(!k)return false;
+  if(adjacentTo(m,k.r,k.c)){ startCombat(k,m,{initiator:'monster'}); return true; }
+  let target=null,bd=99;
+  for(const[dr,dc]of KING8){const r=m.r+dr,c=m.c+dc; if(!inb(r,c)||occupied(r,c))continue;
+    if(cheby(r,c,k.r,k.c)===1){const d=cheby(m.r,m.c,r,c); if(d<bd){bd=d;target=[r,c];}}}
+  if(target){m.r=target[0];m.c=target[1];return true;} return stepToward(m,k.r,k.c); }
+function interceptor(m){ let near=null,nd=99;
+  pieces.filter(p=>p.alive).forEach(p=>{const d=cheby(m.r,m.c,p.r,p.c); if(d<nd){nd=d;near=p;}});
+  if(!near)return false;
+  if(adjacentTo(m,near.r,near.c)){ startCombat(near,m,{initiator:'monster'}); return true; }
+  return stepToward(m,near.r,near.c); }
+function escort(m){ const b=boss(); if(!b)return interceptor(m);
+  let victim=null; pieces.filter(p=>p.alive).forEach(p=>{if(cheby(b.r,b.c,p.r,p.c)<=1&&adjacentTo(m,p.r,p.c))victim=p;});
+  if(victim){ startCombat(victim,m,{initiator:'monster'}); return true; }
+  if(cheby(m.r,m.c,b.r,b.c)>1)return stepToward(m,b.r,b.c);
+  return false; }
+
+/* ---------- 체크메이트 & 보스 회피 ---------- */
+function checkMate(){
+  const b=boss(); if(!b||state.over||state.awaitingCombat)return;
+  const tm=threatMap(); const curThreat=isThreatened(tm,b.r,b.c);
+  const exits=[]; for(const[dr,dc]of KING8){const r=b.r+dr,c=b.c+dc; if(inb(r,c)&&!occupied(r,c))exits.push([r,c]);}
+  const safeExits=exits.filter(([r,c])=>!isThreatened(tm,r,c));
+  if(curThreat&&safeExits.length===0){
+    const siege=siegeCount();
+    // 도전자 = 보스를 위협하는 아군 중 HP 최대
+    const challengers=pieces.filter(p=>p.alive&&pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c));
+    const champ=challengers.sort((a,b2)=>b2.hp-a.hp)[0] || pKing();
+    log(`<span class="win">♛ 체크메이트!</span> 보스전 발동 — 포위 ${siege}기 · 도전자 ${champ.kind} · 시작 보너스 +${siege*CONFIG.SIEGE_BONUS.damagePerPiece} dmg`,'win');
+    startCombat(champ,b,{initiator:'siege', siege});
+    return;
+  }
+  if(curThreat){
+    log('<span class="t">체크 — 보스킹 회피 이동</span>');
+    if(safeExits.length){ const attackers=pieces.filter(p=>p.alive&&pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c));
+      let best=safeExits[0],bs=-1; safeExits.forEach(([r,c])=>{let s=99; attackers.forEach(a=>s=Math.min(s,cheby(r,c,a.r,a.c))); if(s>bs){bs=s;best=[r,c];}});
+      b.r=best[0]; b.c=best[1]; render(); }
+  }
+}
+
+/* ============================================================
+   카드 전투 (스펙 3)  — 보드에서 발동
+   ============================================================ */
+let CB=null; // 현재 전투
+const combatEl=document.getElementById('combat');
+const cLogEl=document.getElementById('c-log');
+function cLog(html){ const d=document.createElement('div'); d.innerHTML=html; cLogEl.appendChild(d); cLogEl.scrollTop=cLogEl.scrollHeight; }
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
+
+function startCombat(piece, mon, opts){
+  state.awaitingCombat=true; state.combats++;
+  const monDef=CONFIG.MONSTER[mon.type];
+  const deck=[]; CONFIG.START_DECK.forEach(([id,n])=>{for(let i=0;i<n;i++)deck.push(id);});
+  CB={
+    piece, mon, opts,
+    ally:{hp:piece.hp,max:piece.max,block:0,kind:piece.kind},
+    enemy:{hp:mon.hp,max:mon.max,name:mon.name,script:monDef.script,step:0},
+    adj:adjacentAllies(piece.r,piece.c),
+    energy:CONFIG.ENERGY_PER_TURN, draw:shuffle(deck), discard:[], hand:[], weaken:0, turn:1, over:false,
+  };
+  cLogEl.innerHTML='';
+  const initTxt = opts.initiator==='player'?'플레이어 공격':(opts.initiator==='siege'?'보스전(포위)':'상대 공격(수비)');
+  cLog(`<span class="sys">— ${initTxt}: ${CB.ally.kind}(${CB.ally.hp}) vs ${CB.enemy.name}(${CB.enemy.hp}) · 인접 아군 ${CB.adj}기 —</span>`);
+  // 포위 보너스: 보스전 시작 시 위협 기물 1기당 시작 데미지
+  if(opts.initiator==='siege' && opts.siege>0){
+    const bonus=opts.siege*CONFIG.SIEGE_BONUS.damagePerPiece;
+    CB.enemy.hp=Math.max(0,CB.enemy.hp-bonus);
+    cLog(`<span class="dmg">포위 보너스: 시작 데미지 ${bonus} → ${CB.enemy.name} HP ${CB.enemy.hp}</span>`);
+  }
+  combatEl.style.display='flex';
+  if(CB.enemy.hp<=0){ cbEnd(true); return; }
+  cbStartTurn();
+}
+function cbStartTurn(){ CB.ally.block=0; CB.energy=CONFIG.ENERGY_PER_TURN; cbDraw(CONFIG.HAND_SIZE); cbRender(); }
+function cbDraw(n){ for(let i=0;i<n;i++){ if(CB.draw.length===0){ if(CB.discard.length===0)break; CB.draw=shuffle(CB.discard); CB.discard=[]; cLog('<span class="sys">버림 더미 리셋</span>'); } CB.hand.push(CB.draw.pop()); } }
+const cbAction=()=>CB.enemy.script[CB.enemy.step%CB.enemy.script.length];
+function cbCardVal(card){ if(card.kind==='damage_adj'||card.kind==='block_adj')return card.per*CB.adj; return card.value; }
+function cbPlay(idx){ if(CB.over)return; const id=CB.hand[idx],card=CONFIG.CARDS[id];
+  if(CB.energy<card.cost)return; CB.energy-=card.cost; const val=cbCardVal(card);
+  if(card.kind==='damage'||card.kind==='damage_adj'){ cbDeal(val,card.name); }
+  else if(card.kind==='damage_weaken'){ cbDeal(val,card.name); CB.weaken+=card.weaken; cLog(`<span class="en">${card.name}: 적 다음 공격 -${card.weaken}</span>`); }
+  else if(card.kind==='block'||card.kind==='block_adj'){ CB.ally.block+=val; cLog(`<span class="blk">${card.name}: 방어 +${val} (누적 ${CB.ally.block})</span>`); }
+  CB.hand.splice(idx,1); CB.discard.push(id);
+  if(CB.enemy.hp<=0){ cbEnd(true); return; } cbRender(); }
+function cbDeal(dmg,src){ CB.enemy.hp=Math.max(0,CB.enemy.hp-dmg); cLog(`<span class="dmg">${src}: ${dmg} 피해 → ${CB.enemy.name} HP ${CB.enemy.hp}</span>`); cbFloat('enemy',`-${dmg}`); }
+function cbEndTurn(){ if(CB.over)return; CB.discard.push(...CB.hand); CB.hand=[]; cbRender(); cbEnemyTurn(); }
+function cbEnemyTurn(){ if(CB.over)return; const act=cbAction();
+  if(act.atk!=null){ let dmg=Math.max(0,act.atk-CB.weaken); CB.weaken=0;
+    const blk=Math.min(CB.ally.block,dmg), thr=dmg-blk; CB.ally.block-=blk; CB.ally.hp=Math.max(0,CB.ally.hp-thr);
+    cLog(`<span class="en">${CB.enemy.name} 공격 ${act.atk}</span> — ${blk} 막고 <span class="dmg">${thr} 피해</span> → 아군 HP ${CB.ally.hp}`);
+    if(thr>0)cbFloat('ally',`-${thr}`); }
+  CB.enemy.step++;
+  if(CB.ally.hp<=0){ cbEnd(false); return; }
+  CB.turn++; cbStartTurn(); }
+
+function cbEnd(win){
+  CB.over=true; state.combatTurns+=CB.turn; cbRender();
+  // HP 이월
+  CB.piece.hp=CB.ally.hp; CB.mon.hp=CB.enemy.hp;
+  if(win){
+    cLog(`<span class="win">▶ 승리 — ${CB.enemy.name} 캡처 (아군 HP ${CB.ally.hp} 이월)</span>`);
+    CB.mon.alive=false;
+    if(CB.opts.initiator==='player'){ CB.piece.r=CB.mon.r; CB.piece.c=CB.mon.c; } // 그 칸으로 이동
+    log(`<span class="cmb">⚔ 전투 #${state.combats}</span> ${CB.enemy.name} 캡처 · ${CB.turn}턴 · ${CB.piece.kind} HP ${CB.piece.hp} 잔존`,'cmb');
+  } else {
+    cLog(`<span class="lose">▶ 패배 — ${CB.ally.kind} 사망 (${CB.enemy.name} HP ${CB.enemy.hp} 이월)</span>`);
+    CB.piece.alive=false;
+    log(`<span class="cmb">⚔ 전투 #${state.combats}</span> ${CB.piece.kind} 사망 · ${CB.turn}턴 · ${CB.enemy.name} HP ${CB.enemy.hp} 잔존`,'cmb');
+  }
+  setTimeout(()=>{ combatEl.style.display='none'; resolveCombat(win); }, 700);
+}
+
+function resolveCombat(win){
+  const init=CB.opts.initiator; const wasKing=(CB.piece.kind==='K'&&!CB.piece.alive);
+  state.awaitingCombat=false; CB=null;
+  // 킹 사망 = 패배
+  if(wasKing){ endGame(false,'플레이어 킹 사망'); return; }
+  // 보스 처치 = 클리어
+  if(win && init==='siege'){ endGame(true,`보스전 승리! 스테이지 클리어 (턴 ${state.turn} · 전투 ${state.combats}회)`); return; }
+  if(win && monsters.filter(m=>m.alive&&m.type==='X').length===0 && init!=='siege'){
+    // 보스를 일반 캡처로 잡는 경우는 없음(보스는 캡처대상 제외). 방어차단.
+  }
+  render();
+  if(init==='player'){ endPlayerTurn(); }        // 플레이어 행동 종료 → 상대 턴
+  else { afterMonster(); }                        // 상대 행동(공격/보스전)이었음 → 플레이어 턴
+}
+
+/* 전투 렌더 */
+function cbRender(){
+  const a=CB.ally,e=CB.enemy;
+  document.getElementById('c-title').innerHTML=`전투 · <b>${a.kind}</b> vs <b>${e.name}</b> · ${CB.turn}턴`;
+  document.getElementById('c-ally-name').textContent=`${a.kind} (아군)`;
+  document.getElementById('c-ally-hp').style.width=(100*a.hp/a.max)+'%';
+  document.getElementById('c-ally-hptext').textContent=`${a.hp} / ${a.max} ❤`;
+  const ab=document.getElementById('c-ally-block'); ab.textContent=`방어 ${a.block}`; ab.style.display=a.block>0?'inline-block':'none';
+  document.getElementById('c-enemy-name').textContent=e.name;
+  document.getElementById('c-enemy-hp').style.width=(100*e.hp/e.max)+'%';
+  document.getElementById('c-enemy-hptext').textContent=`${e.hp} / ${e.max} ❤`;
+  const act=cbAction(); const shown=Math.max(0,(act.atk||0)-(CB.weaken||0));
+  document.getElementById('c-intent').innerHTML=CB.over?'–':`⚔ 공격 ${shown}<small>다음 행동 예고${CB.weaken?` · 견제 -${CB.weaken}`:''}</small>`;
+  document.getElementById('c-energy').textContent=`⚡ ${CB.energy} / ${CONFIG.ENERGY_PER_TURN}`;
+  document.getElementById('c-piles').textContent=`뽑을 ${CB.draw.length} · 버림 ${CB.discard.length}`;
+  const h=document.getElementById('c-hand'); h.innerHTML='';
+  CB.hand.forEach((id,idx)=>{ const card=CONFIG.CARDS[id]; const val=cbCardVal(card); const ok=CB.energy>=card.cost&&!CB.over;
+    const el=document.createElement('div'); el.className='cardc'+(ok?'':' disabled');
+    let dyn=(card.kind==='damage_adj'||card.kind==='block_adj')?` <b>(현재 ${val})</b>`:'';
+    el.innerHTML=`<span class="cost">${card.cost}</span><div class="cname">${card.name}</div><div class="cdesc">${card.desc}${dyn}</div><div class="ctag">${card.kind.includes('block')?'🛡 방어':'🗡 공격'}</div>`;
+    if(ok)el.onclick=()=>cbPlay(idx); h.appendChild(el); });
+}
+function cbFloat(side,txt){ const f=document.querySelector('.fighter.'+side); if(!f)return; const d=document.createElement('div'); d.className='float'; d.style.color='var(--dmg)'; d.textContent=txt; f.appendChild(d); setTimeout(()=>d.remove(),900); }
+document.getElementById('c-endturn').addEventListener('click', cbEndTurn);
+
+/* ============================================================
+   종료
+   ============================================================ */
+function endGame(win,msg){
+  state.over=true; state.phase='over';
+  log((win?'<span class="win">▶ 승리':'<span class="lose">▶ 패배')+` — ${msg}</span>`, win?'win':'lose');
+  render();
+  document.getElementById('b-title').textContent=win?'🏆 스테이지 클리어':'💀 스테이지 패배';
+  document.getElementById('b-msg').textContent=msg+`  (턴 ${state.turn} · 전투 ${state.combats}회 · 전투누적 ${state.combatTurns}턴)`;
+  document.getElementById('banner').style.display='flex';
+}
+const logEl=document.getElementById('log');
+function log(html){ const d=document.createElement('div'); d.innerHTML=html; logEl.appendChild(d); logEl.scrollTop=logEl.scrollHeight; }
+
+/* ============================================================
+   시작
+   ============================================================ */
+function initGame(){
+  if(state.timer)clearTimeout(state.timer);
+  state={ turn:0, combats:0, combatTurns:0, phase:'player', selected:null, over:false, timer:null, monsterCursor:0, awaitingCombat:false };
+  document.getElementById('banner').style.display='none';
+  document.getElementById('combat').style.display='none';
+  logEl.innerHTML=''; CB=null;
+  buildFromLayout();
+  log('<span class="t">— 3단계 통합 시작. 몬스터 캡처 = 카드 전투. HP는 보드로 이월 —</span>');
+  render();
+}
+document.getElementById('restart').addEventListener('click',initGame);
+document.getElementById('restartBanner').addEventListener('click',initGame);
+initGame();
+</script>
+</body>
+</html>

@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>보드×카드 하이브리드 — 프로토타입 [1단계: 보드 레이어]</title>
+<style>
+  :root{
+    --bg:#12141c; --panel:#1b1e2b; --line:#2c3145; --ink:#e8ebf5; --muted:#8b93ad;
+    --player:#3f7fff; --enemy:#e0533d; --boss:#c341e0; --cell:#232839; --cell2:#1d2231;
+    --move:#2f6f4d; --cap:#8a3030; --threat:#3a2740; --sel:#d8a12a;
+    --cell-size:clamp(44px, 10vw, 76px);
+    --board-gap:3px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px}
+  .wrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
+  h1{font-size:16px;margin:0 0 2px}
+  .sub{color:var(--muted);font-size:12px;margin-bottom:12px}
+  #boardWrap{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+  #stage{display:flex;align-items:center;justify-content:center;max-width:100%}
+  #board{display:grid;gap:var(--board-gap);background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;transition:transform .25s}
+  /* 다이아몬드(45도) 뷰: 보드 전체 회전 + 내용물 역회전 */
+  #stage.diamond{width:min(700px, calc(100vw - 36px));aspect-ratio:1}
+  #board.diamond{transform:rotate(-45deg)}
+  #board.diamond .piece,#board.diamond .coord{transform:rotate(45deg)}
+  .cell{position:relative;width:var(--cell-size);height:var(--cell-size);background:var(--cell);display:flex;align-items:center;justify-content:center;cursor:default;user-select:none}
+  .cell.alt{background:var(--cell2)}
+  .cell.move{outline:3px solid var(--move);outline-offset:-3px;cursor:pointer}
+  .cell.cap{outline:3px solid var(--cap);outline-offset:-3px;cursor:pointer}
+  .cell.threat::after{content:"";position:absolute;inset:0;background:var(--threat);opacity:.5;pointer-events:none}
+  .cell.selected{outline:3px solid var(--sel);outline-offset:-3px}
+  .coord{position:absolute;top:2px;left:3px;font-size:9px;color:#4a5170}
+  .piece{width:calc(var(--cell-size) * .78);height:calc(var(--cell-size) * .78);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,.4);cursor:pointer;position:relative;z-index:2}
+  .piece.p{background:var(--player)}
+  .piece.e{background:var(--enemy)}
+  .piece.boss{background:var(--boss)}
+  .piece .g{font-weight:700;font-size:17px}
+  .piece .st{font-size:9px;margin-top:2px;opacity:.95}
+  .piece.selectable{cursor:pointer}
+  .piece.selectable:hover{filter:brightness(1.15)}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;width:300px}
+  .panel h2{font-size:13px;margin:0 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  .stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line)}
+  .stat b{font-variant-numeric:tabular-nums}
+  #log{height:220px;overflow-y:auto;background:#0e1017;border:1px solid var(--line);border-radius:8px;padding:8px;font-size:12px;font-family:ui-monospace,Menlo,monospace;line-height:1.5}
+  #log .t{color:var(--muted)}
+  #log .cmb{color:#ffcf6b}
+  #log .win{color:#5be08a}
+  #log .lose{color:#ff7a6b}
+  .btn{background:var(--player);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer;margin-top:8px;width:100%}
+  .btn.sec{background:#333a52}
+  .banner{position:fixed;inset:0;background:rgba(8,9,14,.85);display:none;align-items:center;justify-content:center;z-index:50}
+  .banner .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:28px 34px;text-align:center;max-width:420px}
+  .banner h3{margin:0 0 8px;font-size:22px}
+  .legend{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.7}
+  .swatch{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:middle}
+  .turnOf{font-size:12px;color:var(--muted);margin-top:6px}
+  .flagbox{background:#2a2033;border:1px solid #4a3358;border-radius:8px;padding:9px;font-size:11px;color:#e2c8f0;margin-top:12px;line-height:1.6}
+  @media (max-width: 760px){
+    .wrap{padding:12px;gap:12px}
+    #boardWrap,.panel{width:100%}
+    #boardWrap{padding:10px}
+    .panel{padding:12px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div>
+    <h1>보드×카드 하이브리드 — 프로토타입</h1>
+    <div class="sub">1단계 · 보드 레이어 (전투 = 자동승리 스텁 · 공격 개시자 승)</div>
+    <div id="boardWrap"><div id="stage"><div id="board"></div></div>
+      <div class="legend">
+        <span class="swatch" style="background:var(--move)"></span>이동 가능
+        <span class="swatch" style="background:var(--cap)"></span>캡처 가능
+        <span class="swatch" style="background:var(--threat)"></span>내 위협범위(왕 체크용)
+        <span class="swatch" style="background:var(--sel)"></span>선택됨
+        <br>기물 클릭 → 이동/캡처 지점 하이라이트. 파랑=아군, 빨강=몬스터, 보라=보스킹.
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>플레이 로그 (검증 Q1)</h2>
+    <div class="stat"><span>턴 수</span><b id="s-turn">0</b></div>
+    <div class="stat"><span>전투 발생</span><b id="s-combat">0</b></div>
+    <div class="stat"><span>남은 몬스터</span><b id="s-mon">0</b></div>
+    <div class="stat"><span>남은 아군</span><b id="s-ally">0</b></div>
+    <div class="stat"><span>보스 위협(포위)</span><b id="s-siege">0</b></div>
+    <div class="turnOf" id="phase">플레이어 차례 — 기물을 선택하세요</div>
+    <div style="margin-top:12px"></div>
+    <h2>이벤트 로그</h2>
+    <div id="log"></div>
+    <button class="btn sec" id="restart">↻ 재시작</button>
+    <div class="flagbox" id="flag"></div>
+  </div>
+</div>
+
+<div class="banner" id="banner"><div class="box">
+  <h3 id="b-title"></h3><div id="b-msg" style="color:var(--muted)"></div>
+  <button class="btn" id="restartBanner">다시 시작</button>
+</div></div>
+
+<script>
+/* ============================================================
+   CONFIG — 모든 튜닝 레버가 여기 하나에 모여 있음.
+   밸런스는 코드 로직을 건드리지 말고 이 객체만 수정하세요.
+   ============================================================ */
+const CONFIG = {
+  BOARD_SIZE: 6,               // 보드 한 변 (기본 6, 변경 가능)
+  DIAMOND_VIEW: true,          // true=45도 다이아몬드 뷰(플레이어가 아래 꼭짓점) / false=정사각 그리드
+
+  // 플레이어 기물 HP (스펙 2.2)
+  PIECE_HP: { P:10, B:12, N:14, R:18, K:25 },
+
+  // 몬스터 정의 (HP: 스펙 4.1 / atk: 보드표시용 대표 공격력 = 튜닝레버)
+  MONSTER: {
+    g: { name:'고블린', hp:12, atk:6,  arch:'hunter'      },
+    w: { name:'늑대',   hp:15, atk:7,  arch:'interceptor' },
+    o: { name:'오크',   hp:20, atk:8,  arch:'escort'      },
+    p: { name:'상대 폰', hp:10, atk:5,  arch:'hunter'      },
+    r: { name:'상대 룩', hp:18, atk:8,  arch:'escort'      },
+    n: { name:'상대 나이트', hp:14, atk:7,  arch:'interceptor' },
+    X: { name:'보스킹', hp:60, atk:12, arch:'boss'        },
+  },
+
+  // 배치도 (윗줄이 row0=상단). 다이아몬드 뷰 기준 X=12시 꼭짓점, K=6시 꼭짓점.
+  //  P폰 B비숍 N나이트 R룩 K킹 / p상대폰 r상대룩 n상대나이트 X보스킹 / .빈칸
+  //  ※ 시작 배치는 스펙 6절의 '스테이지 배치표(미결·레벨디자인)'라 임시값입니다. 자유 편집 가능.
+  LAYOUT: [
+    '...prX',   // a5 상대 룩 / a6 보스킹
+    '...pnr',   // b6 상대 룩 / b5 상대 나이트
+    '...ppp',   // 나머지 상대 룩은 폰으로 변경
+    'PPP...',   // 나머지 룩은 폰으로 변경
+    'RNP...',   // e1 룩 / e2 나이트
+    'KRP...',   // f1 플레이어킹 / f2 룩
+  ],
+
+  // 포위 보너스 (스펙 2.4) — 2단계 전투에서 사용, 여기선 카운트만 표시
+  SIEGE_BONUS: { damagePerPiece:5, drawPerPiece:0 },
+
+  // 전투 스텁: 이 단계에선 카드전 대신 '공격 개시자 승'으로 자동 처리
+  COMBAT_STUB: 'attacker_wins',
+
+  // 2단계 이후 전투 상수 (미리 넣어둠, 1단계 미사용)
+  ENERGY_PER_TURN:3, HAND_SIZE:5, START_DECK_SIZE:12,
+};
+
+/* ============================================================
+   기하 정의
+   - 플레이어 전진(forward) = 적 코너(우상단) 방향 = (-1,+1) 대각
+   - 폰: 좌/우/앞 1칸 이동 / 캡처는 좌·우만 (스펙 2.2)
+     매핑 → 앞=우상대각(-1,+1) 이동전용, 좌=위(-1,0) 우=오른(0,+1) 이동+캡처
+     (마주 본 폰은 앞 대각으로 서로 캡처 불가 → 전선 자연발생, 스펙 의도)
+   ============================================================ */
+const N = CONFIG.BOARD_SIZE;
+const inb = (r,c)=> r>=0 && r<N && c>=0 && c<N;
+const FILES = 'abcdefghijklmnopqrstuvwxyz';
+const coordName = (r,c)=> `${FILES[r]||'?'}${c+1}`;
+const DIAG = [[-1,-1],[-1,1],[1,-1],[1,1]];
+const ORTH = [[-1,0],[1,0],[0,-1],[0,1]];
+const KING8 = [...DIAG,...ORTH];
+const KNIGHT = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+
+// 플레이어 폰 기준(전진 우상단): 이동칸 / 캡처칸
+const PAWN_MOVE = [[-1,1],[-1,0],[0,1]];   // 앞(대각)+좌(위)+우(오른)
+const PAWN_CAP  = [[-1,0],[0,1]];          // 좌(위)+우(오른)만 캡처
+
+/* ============================================================
+   상태
+   ============================================================ */
+let pieces = [];   // 아군: {id,kind:'P/B/N/R/K',hp,max,r,c,alive}
+let monsters = []; // 몬스터/상대: {id,type:'g/w/o/p/r/n/X',name,hp,max,atk,arch,r,c,alive}
+let state = { turn:0, combats:0, phase:'player', selected:null, over:false, timer:null, monsterCursor:0 };
+
+function buildFromLayout(){
+  pieces=[]; monsters=[]; let pid=0, mid=0;
+  CONFIG.LAYOUT.forEach((row,r)=>{
+    [...row].forEach((ch,c)=>{
+      if('PBNRK'.includes(ch)){
+        pieces.push({id:'p'+(pid++),kind:ch,hp:CONFIG.PIECE_HP[ch],max:CONFIG.PIECE_HP[ch],r,c,alive:true});
+      } else if('gwoprnX'.includes(ch)){
+        const m=CONFIG.MONSTER[ch];
+        monsters.push({id:'m'+(mid++),type:ch,name:m.name,hp:m.hp,max:m.hp,atk:m.atk,arch:m.arch,r,c,alive:true});
+      }
+    });
+  });
+}
+
+const pieceAt = (r,c)=> pieces.find(p=>p.alive&&p.r===r&&p.c===c);
+const monAt   = (r,c)=> monsters.find(m=>m.alive&&m.r===r&&m.c===c);
+const occupied= (r,c)=> pieceAt(r,c)||monAt(r,c);
+const boss    = ()=> monsters.find(m=>m.alive&&m.type==='X');
+const pKing   = ()=> pieces.find(p=>p.alive&&p.kind==='K');
+
+/* ---------- 아군 기물의 이동/캡처 목표 계산 ---------- */
+function pieceTargets(p){
+  const moves=[], caps=[]; // caps: 몬스터가 있는 캡처가능칸
+  const slide=(dirs)=>{
+    for(const [dr,dc] of dirs){
+      let r=p.r+dr,c=p.c+dc;
+      while(inb(r,c)){
+        const o=occupied(r,c);
+        if(!o){ moves.push([r,c]); }
+        else{ if(monAt(r,c)&&monAt(r,c).type!=='X') caps.push([r,c]); break; } // 보스는 직접캡처 불가(메이트로만)
+        r+=dr;c+=dc;
+      }
+    }
+  };
+  if(p.kind==='P'){
+    for(const [dr,dc] of PAWN_MOVE){ const r=p.r+dr,c=p.c+dc; if(inb(r,c)&&!occupied(r,c)) moves.push([r,c]); }
+    for(const [dr,dc] of PAWN_CAP){ const r=p.r+dr,c=p.c+dc; const m=inb(r,c)&&monAt(r,c); if(m&&m.type!=='X') caps.push([r,c]); }
+  } else if(p.kind==='B'){ slide(DIAG); }
+  else if(p.kind==='R'){ slide(ORTH); }
+  else if(p.kind==='N'){
+    for(const [dr,dc] of KNIGHT){ const r=p.r+dr,c=p.c+dc; if(!inb(r,c))continue; const o=occupied(r,c);
+      if(!o) moves.push([r,c]); else if(monAt(r,c)&&monAt(r,c).type!=='X') caps.push([r,c]); }
+  } else if(p.kind==='K'){
+    for(const [dr,dc] of KING8){ const r=p.r+dr,c=p.c+dc; if(!inb(r,c))continue; const o=occupied(r,c);
+      if(!o) moves.push([r,c]); else if(monAt(r,c)&&monAt(r,c).type!=='X') caps.push([r,c]); }
+  }
+  return {moves,caps};
+}
+
+/* ---------- 아군 위협범위(왕 체크/메이트 판정용) ---------- */
+// 특정 아군 기물이 '공격할 수 있는' 칸들의 집합
+function pieceThreat(p){
+  const cells=[];
+  const slide=(dirs)=>{ for(const [dr,dc] of dirs){ let r=p.r+dr,c=p.c+dc;
+    while(inb(r,c)){ cells.push([r,c]); if(occupied(r,c)) break; r+=dr;c+=dc; } } };
+  if(p.kind==='P'){ for(const [dr,dc] of PAWN_CAP){ const r=p.r+dr,c=p.c+dc; if(inb(r,c)) cells.push([r,c]); } }
+  else if(p.kind==='B') slide(DIAG);
+  else if(p.kind==='R') slide(ORTH);
+  else if(p.kind==='N'){ for(const [dr,dc] of KNIGHT){ const r=p.r+dr,c=p.c+dc; if(inb(r,c)) cells.push([r,c]); } }
+  else if(p.kind==='K'){ for(const [dr,dc] of KING8){ const r=p.r+dr,c=p.c+dc; if(inb(r,c)) cells.push([r,c]); } }
+  return cells;
+}
+// 위협맵: "r,c" -> 위협하는 아군 수
+function threatMap(){
+  const m={};
+  pieces.filter(p=>p.alive).forEach(p=>{
+    pieceThreat(p).forEach(([r,c])=>{ const k=r+','+c; m[k]=(m[k]||0)+1; });
+  });
+  return m;
+}
+const isThreatened=(tm,r,c)=> !!tm[r+','+c];
+
+/* ---------- 인접 아군 수 (지원사격/군단의방패 · 2단계용, 미리 노출) ---------- */
+function adjacentAllies(r,c){
+  return pieces.filter(p=>p.alive && Math.max(Math.abs(p.r-r),Math.abs(p.c-c))===1).length;
+}
+
+/* ============================================================
+   렌더링
+   ============================================================ */
+const boardEl=document.getElementById('board');
+function render(){
+  boardEl.style.gridTemplateColumns=`repeat(${N}, var(--cell-size))`;
+  boardEl.classList.toggle('diamond', CONFIG.DIAMOND_VIEW);
+  document.getElementById('stage').classList.toggle('diamond', CONFIG.DIAMOND_VIEW);
+  boardEl.innerHTML='';
+  const tm=threatMap();
+  const sel=state.selected;
+  let hl={moves:[],caps:[]};
+  if(sel) hl=pieceTargets(sel);
+  const inList=(arr,r,c)=>arr.some(([a,b])=>a===r&&b===c);
+
+  for(let r=0;r<N;r++) for(let c=0;c<N;c++){
+    const cell=document.createElement('div');
+    cell.className='cell'+(((r+c)%2)?' alt':'');
+    if(isThreatened(tm,r,c)) cell.classList.add('threat');
+    if(inList(hl.moves,r,c)) cell.classList.add('move');
+    if(inList(hl.caps,r,c)) cell.classList.add('cap');
+    const co=document.createElement('div'); co.className='coord'; co.textContent=coordName(r,c); cell.appendChild(co);
+
+    const p=pieceAt(r,c), m=monAt(r,c);
+    if(p){
+      const el=document.createElement('div'); el.className='piece p'+(sel&&sel.id===p.id?'':'');
+      if(sel&&sel.id===p.id) cell.classList.add('selected');
+      if(state.phase==='player'&&!state.over) el.classList.add('selectable');
+      el.innerHTML=`<span class="g">${p.kind}</span><span class="st">${p.hp}❤</span>`;
+      el.onclick=(e)=>{e.stopPropagation(); onPieceClick(p);};
+      cell.appendChild(el);
+    } else if(m){
+      const el=document.createElement('div'); el.className='piece '+(m.type==='X'?'boss':'e');
+      const glyph=m.type==='X'?'♛':m.type.toUpperCase();
+      el.innerHTML=`<span class="g">${glyph}</span><span class="st">${m.hp}❤ ${m.atk}⚔</span>`;
+      cell.appendChild(el);
+    }
+    cell.onclick=()=>onCellClick(r,c);
+    boardEl.appendChild(cell);
+  }
+  updatePanel(tm);
+}
+
+function updatePanel(tm){
+  document.getElementById('s-turn').textContent=state.turn;
+  document.getElementById('s-combat').textContent=state.combats;
+  document.getElementById('s-mon').textContent=monsters.filter(m=>m.alive).length;
+  document.getElementById('s-ally').textContent=pieces.filter(p=>p.alive).length;
+  const b=boss(); let siege=0;
+  if(b){ pieces.filter(p=>p.alive).forEach(p=>{ if(pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c)) siege++; }); }
+  document.getElementById('s-siege').textContent=siege;
+  document.getElementById('phase').textContent =
+    state.over ? '게임 종료' : (state.selected ? `${state.selected.kind} 선택됨 — 목적지 클릭` : '플레이어 차례 — 기물을 선택하세요');
+  document.getElementById('flag').innerHTML =
+    '⚑ 확인 필요: <b>폰 전진=우상단 대각</b>으로 구현했습니다(비숍 하이웨이·폰 전선과 일관). '+
+    '킹 배치: 보스킹=12시 꼭짓점, 플레이어킹=6시 꼭짓점. 좌표는 왼쪽 꼭짓점 기준 아래=a,b,c... / 위=1,2,3... 입니다.';
+}
+
+/* ============================================================
+   상호작용
+   ============================================================ */
+function onPieceClick(p){
+  if(state.over||state.phase!=='player') return;
+  state.selected = (state.selected&&state.selected.id===p.id)?null:p;
+  render();
+}
+function onCellClick(r,c){
+  if(state.over||state.phase!=='player'||!state.selected) return;
+  const {moves,caps}=pieceTargets(state.selected);
+  if(caps.some(([a,b])=>a===r&&b===c)){ playerCapture(state.selected,r,c); }
+  else if(moves.some(([a,b])=>a===r&&b===c)){ movePiece(state.selected,r,c); endPlayerTurn(); }
+}
+
+function movePiece(p,r,c){ p.r=r;p.c=c; state.selected=null; }
+
+function playerCapture(p,r,c){
+  const m=monAt(r,c);
+  state.combats++;
+  log(`<span class="cmb">⚔ 전투 #${state.combats}</span> ${p.kind}(아군) → ${m.name} · 스텁: 공격자 승 → ${m.name} 캡처`,'cmb');
+  m.alive=false; p.r=r;p.c=c; // 캡처 성공: 그 칸으로 이동, HP 유지(스텁)
+  state.selected=null;
+  endPlayerTurn();
+}
+
+/* ============================================================
+   턴 진행: 플레이어 1수 → 상대 1수 → 판정
+   ============================================================ */
+function endPlayerTurn(){
+  if(state.over) return;
+  state.turn++;
+  state.phase='monster';
+  render();
+  state.timer = setTimeout(()=>{
+    state.timer = null;
+    monsterPhase();
+    if(!state.over){ state.phase='player'; render(); checkMate(); }
+  }, 220);
+}
+
+function cheby(a,b,r,c){ return Math.max(Math.abs(a-r),Math.abs(b-c)); }
+
+function monsterPhase(){
+  if(!monsters.length) return;
+  for(let i=0;i<monsters.length;i++){
+    const idx=(state.monsterCursor+i)%monsters.length;
+    const m=monsters[idx];
+    if(!m.alive||state.over) continue;
+    if(m.arch==='hunter') hunter(m);
+    else if(m.arch==='interceptor') interceptor(m);
+    else if(m.arch==='escort') escort(m);
+    else if(m.arch==='boss') continue; // 보스는 checkMate에서 처리
+    state.monsterCursor=(idx+1)%monsters.length;
+    return;
+  }
+}
+
+// 몬스터 1칸 스텝: target 방향으로 Chebyshev 거리 줄이는 빈 이웃(우선순위: 첫 후보=결정론적)
+function stepToward(m,tr,tc){
+  let best=null,bd=cheby(m.r,m.c,tr,tc);
+  for(const [dr,dc] of KING8){ const r=m.r+dr,c=m.c+dc;
+    if(!inb(r,c)||occupied(r,c)) continue;
+    const d=cheby(r,c,tr,tc);
+    if(d<bd){ bd=d; best=[r,c]; }
+  }
+  if(best){ m.r=best[0]; m.c=best[1]; }
+}
+function adjacentTo(m,r,c){ return cheby(m.r,m.c,r,c)===1; }
+
+// 몬스터가 아군을 공격 → 스텁: 공격자(몬스터) 승 → 아군 사망
+function monsterAttack(m,target){
+  state.combats++;
+  log(`<span class="cmb">⚔ 전투 #${state.combats}</span> ${m.name} → ${target.kind}(아군) · 스텁: 공격자 승 → ${target.kind} 사망`,'cmb');
+  target.alive=false;
+  if(target.kind==='K'){ endGame(false,'플레이어 킹 사망'); }
+}
+
+// 사냥꾼형(고블린): 1)킹 공격가능→공격 2)킹 위협칸으로 이동 3)킹 방향 전진
+function hunter(m){
+  const k=pKing(); if(!k) return;
+  if(adjacentTo(m,k.r,k.c)){ monsterAttack(m,k); return; }
+  // 킹에 인접(=다음턴 공격가능)해지는 빈칸으로 이동
+  let target=null,bd=99;
+  for(const [dr,dc] of KING8){ const r=m.r+dr,c=m.c+dc;
+    if(!inb(r,c)||occupied(r,c)) continue;
+    if(cheby(r,c,k.r,k.c)===1){ const d=cheby(m.r,m.c,r,c); if(d<bd){bd=d;target=[r,c];} } }
+  if(target){ m.r=target[0]; m.c=target[1]; return; }
+  stepToward(m,k.r,k.c);
+}
+
+// 요격형(늑대): 1)인접 아군 공격 2)최근접 아군으로 이동
+function interceptor(m){
+  let near=null,nd=99;
+  pieces.filter(p=>p.alive).forEach(p=>{ const d=cheby(m.r,m.c,p.r,p.c); if(d<nd){nd=d;near=p;} });
+  if(!near) return;
+  if(adjacentTo(m,near.r,near.c)){ monsterAttack(m,near); return; }
+  stepToward(m,near.r,near.c);
+}
+
+// 호위형(오크): 보스 반경1 유지, 그 구역 진입 아군만 공격
+function escort(m){
+  const b=boss(); if(!b){ interceptor(m); return; }
+  // 보스 반경1 안의 아군이 있으면 공격(인접 시) / 아니면 그쪽으로
+  let victim=null;
+  pieces.filter(p=>p.alive).forEach(p=>{ if(cheby(b.r,b.c,p.r,p.c)<=1 && adjacentTo(m,p.r,p.c)) victim=p; });
+  if(victim){ monsterAttack(m,victim); return; }
+  // 보스 반경1 밖이면 복귀
+  if(cheby(m.r,m.c,b.r,b.c)>1) stepToward(m,b.r,b.c);
+}
+
+/* ---------- 체크메이트 판정 & 보스 회피 (스펙 2.4 / 4.2) ---------- */
+function checkMate(){
+  const b=boss(); if(!b||state.over) return;
+  const tm=threatMap();
+  const curThreat=isThreatened(tm,b.r,b.c);
+  // 보스가 갈 수 있는 빈 이웃칸
+  const exits=[];
+  for(const [dr,dc] of KING8){ const r=b.r+dr,c=b.c+dc; if(inb(r,c)&&!occupied(r,c)) exits.push([r,c]); }
+  const safeExits=exits.filter(([r,c])=>!isThreatened(tm,r,c));
+
+  if(curThreat && safeExits.length===0){
+    // 회피 불가 = 체크메이트 → 보스전 발동
+    let siege=0; pieces.filter(p=>p.alive).forEach(p=>{ if(pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c)) siege++; });
+    log(`<span class="win">♛ 체크메이트!</span> 보스 회피 불가 → 보스전 발동 (포위 ${siege}기 · 보너스 +${siege*CONFIG.SIEGE_BONUS.damagePerPiece} dmg)`,'win');
+    // 1단계 스텁: 보스전 자동 승리 → 스테이지 클리어
+    b.alive=false;
+    endGame(true,`체크메이트로 보스전 발동. 포위 ${siege}기 → 보너스 데미지 +${siege*CONFIG.SIEGE_BONUS.damagePerPiece}. (전투는 2단계에서 구현) 스테이지 클리어!`);
+    return;
+  }
+  if(curThreat){
+    // 체크: 보스는 가장 안전(가장 위협 적고 공격자에서 먼)한 칸으로 회피
+    log(`<span class="t">체크 — 보스킹 회피 이동</span>`,'t');
+    // 공격자에서 가장 먼 safeExit 선택
+    let best=safeExits[0];
+    if(safeExits.length){
+      const attackers=pieces.filter(p=>p.alive&&pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c));
+      let bestScore=-1;
+      safeExits.forEach(([r,c])=>{ let s=99; attackers.forEach(a=>{ s=Math.min(s,cheby(r,c,a.r,a.c)); });
+        if(s>bestScore){bestScore=s;best=[r,c];} });
+      b.r=best[0]; b.c=best[1];
+      render();
+    }
+  }
+}
+
+/* ============================================================
+   종료
+   ============================================================ */
+function endGame(win,msg){
+  state.over=true; state.phase='over';
+  log((win?'<span class="win">▶ 승리':'<span class="lose">▶ 패배')+` — ${msg}</span>`, win?'win':'lose');
+  render();
+  document.getElementById('b-title').textContent = win?'🏆 스테이지 클리어':'💀 스테이지 패배';
+  document.getElementById('b-msg').textContent = msg + `  (턴 ${state.turn} · 전투 ${state.combats}회)`;
+  document.getElementById('banner').style.display='flex';
+}
+
+/* ---------- 로그 ---------- */
+const logEl=document.getElementById('log');
+function log(html){ const d=document.createElement('div'); d.innerHTML=html; logEl.appendChild(d); logEl.scrollTop=logEl.scrollHeight; }
+
+/* ============================================================
+   시작
+   ============================================================ */
+function initGame(){
+  if(state.timer) clearTimeout(state.timer);
+  state = { turn:0, combats:0, phase:'player', selected:null, over:false, timer:null, monsterCursor:0 };
+  document.getElementById('banner').style.display='none';
+  logEl.innerHTML='';
+  buildFromLayout();
+  log('<span class="t">— 1단계 보드 레이어 시작. 전투는 자동승리 스텁 —</span>');
+  render();
+}
+
+document.getElementById('restart').addEventListener('click', initGame);
+document.getElementById('restartBanner').addEventListener('click', initGame);
+initGame();
+</script>
+</body>
+</html>
