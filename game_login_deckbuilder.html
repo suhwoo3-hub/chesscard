@@ -65,6 +65,10 @@
   .pcard{background:var(--card);border:1px solid var(--cardEdge);border-radius:10px;padding:10px;position:relative;display:flex;flex-direction:column}
   .pcard .cost{position:absolute;top:-8px;left:-8px;width:24px;height:24px;border-radius:50%;background:var(--energy);color:#1a1400;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:13px}
   .pcard .cn{font-weight:700;font-size:13px;margin-bottom:4px}
+  .pcard .meta,.cardc .meta{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px}
+  .pill{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;padding:2px 7px;font-size:10px;color:#c7cde0;background:#121624}
+  .pill.rare{border-color:#d8a12a;color:#ffdf8a;background:rgba(216,161,42,.12)}
+  .pill.uncommon{border-color:#7fd6ff;color:#b9ecff;background:rgba(127,214,255,.1)}
   .pcard .cd{font-size:11px;color:#c7cde0;line-height:1.4;flex:1;margin-bottom:8px}
   .pcard .row{display:flex;align-items:center;justify-content:space-between;gap:6px}
   .pcard .own{font-size:11px;color:var(--muted)}
@@ -77,6 +81,9 @@
   .dl-row{display:flex;align-items:center;justify-content:space-between;background:#0e1017;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px}
   .dl-row .x{color:var(--muted);font-size:11px}
   .deckbtns{display:flex;flex-direction:column;gap:8px}
+  .presets{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+  .presetbtn{background:#20263a;color:#d7dcef;border:1px solid var(--line);border-radius:8px;padding:7px 8px;font-size:12px;cursor:pointer}
+  .deckhint{color:var(--muted);font-size:11px;line-height:1.5;margin:0 0 10px}
 
   /* ---------- 게임(보드+전투) ---------- */
   .gamewrap{display:flex;gap:18px;padding:18px;align-items:flex-start;flex-wrap:wrap}
@@ -192,6 +199,8 @@
       </div>
       <div class="mydeck">
         <div class="deckhead"><h3 style="margin:0">내 덱</h3><div class="count" id="deckcount">0 / 12</div></div>
+        <p class="deckhint">동일 카드는 최대 3장까지 넣을 수 있습니다. 추천 덱으로 방향을 잡고 카드 몇 장만 바꿔도 됩니다.</p>
+        <div class="presets" id="presetlist"></div>
         <div class="decklist" id="decklist"></div>
         <div class="deckbtns">
           <button class="btn ok" id="btn-savedeck">덱 저장</button>
@@ -274,18 +283,36 @@ const CONFIG = {
   LAYOUT:['bnrXnb','pppppp','......','......','PPPPPP','BNKRNB'],
   ENERGY_PER_TURN:3, HAND_SIZE:5,
   CARDS:{
-    strike: {name:'타격',cost:1,kind:'damage',value:5,desc:'5 데미지'},
-    guard:  {name:'방패',cost:1,kind:'block',value:5,desc:'방어 5'},
-    bash:   {name:'강타',cost:2,kind:'damage',value:9,desc:'9 데미지'},
-    check:  {name:'견제',cost:1,kind:'damage_weaken',value:3,weaken:2,desc:'3 데미지 + 적 다음 공격 -2'},
-    support:{name:'지원 사격',cost:1,kind:'damage_adj',per:3,desc:'인접 아군 1기당 3 데미지'},
-    legion: {name:'군단의 방패',cost:1,kind:'block_adj',per:4,desc:'인접 아군 1기당 방어 4'},
+    strike: {name:'타격',cost:1,kind:'damage',value:5,type:'공격',rarity:'common',desc:'5 데미지'},
+    guard:  {name:'방패',cost:1,kind:'block',value:5,type:'방어',rarity:'common',desc:'방어 5'},
+    bash:   {name:'강타',cost:2,kind:'damage',value:9,type:'공격',rarity:'common',desc:'9 데미지'},
+    check:  {name:'견제',cost:1,kind:'damage_weaken',value:3,weaken:2,type:'제어',rarity:'common',desc:'3 데미지 + 적 다음 공격 -2'},
+    support:{name:'지원 사격',cost:1,kind:'damage_adj',per:3,type:'진형',rarity:'common',desc:'인접 아군 1기당 3 데미지'},
+    legion: {name:'군단의 방패',cost:1,kind:'block_adj',per:4,type:'진형',rarity:'common',desc:'인접 아군 1기당 방어 4'},
+    quick:  {name:'가벼운 찌르기',cost:0,kind:'damage_draw',value:3,draw:1,type:'순환',rarity:'uncommon',desc:'3 데미지 + 카드 1장 뽑기'},
+    tactics:{name:'전술 정비',cost:1,kind:'draw',draw:2,type:'순환',rarity:'uncommon',desc:'카드 2장 뽑기'},
+    focus:  {name:'집중',cost:0,kind:'energy',energy:1,type:'순환',rarity:'uncommon',desc:'이번 턴 에너지 +1'},
+    pierce: {name:'빈틈 찌르기',cost:1,kind:'damage_vulnerable',value:4,vulnerable:3,type:'제어',rarity:'uncommon',desc:'4 데미지 + 다음 피해 +3'},
+    cripple:{name:'무력화',cost:1,kind:'weaken',weaken:5,type:'제어',rarity:'uncommon',desc:'적 다음 공격 -5'},
+    mend:   {name:'응급 처치',cost:1,kind:'heal',value:4,type:'방어',rarity:'uncommon',desc:'아군 HP 4 회복'},
+    phalanx:{name:'밀집 방진',cost:2,kind:'phalanx',block:6,per:3,type:'진형',rarity:'rare',desc:'방어 6 + 인접 아군 1기당 방어 3'},
+    isolate:{name:'고립 돌파',cost:1,kind:'isolated_damage',value:4,solo:12,type:'돌파',rarity:'rare',desc:'4 데미지. 인접 아군이 없으면 12 데미지'},
+    oath:   {name:'폰의 결의',cost:1,kind:'piece_damage',value:5,piece:'P',bonus:6,type:'돌파',rarity:'uncommon',desc:'5 데미지. 폰이면 +6'},
+    kingarm:{name:'왕의 엄호',cost:1,kind:'king_block',base:4,near:10,type:'방어',rarity:'rare',desc:'방어 4. 킹과 가까우면 방어 10'},
+    fissure:{name:'균열',cost:1,kind:'bleed',value:2,bleed:3,type:'제어',rarity:'rare',desc:'2 데미지 + 매 턴 3 데미지'},
+    allout: {name:'총공세',cost:0,kind:'allout',per:5,type:'공격',rarity:'rare',desc:'남은 에너지를 모두 써서 1당 5 데미지'},
   },
   // 보유 카드 풀 (덱빌딩에서 이 수량 안에서 구성)
-  OWNED:{strike:6,guard:5,bash:2,check:2,support:3,legion:2},
-  // 기본(추천) 덱 = 스펙 3.6 시작덱
-  DEFAULT_DECK:{strike:4,guard:3,bash:1,check:1,support:2,legion:1},
+  OWNED:{strike:6,guard:5,bash:3,check:3,support:4,legion:3,quick:3,tactics:2,focus:2,pierce:2,cripple:2,mend:2,phalanx:2,isolate:2,oath:3,kingarm:2,fissure:1,allout:1},
+  DEFAULT_DECK:{strike:3,guard:3,bash:1,check:1,support:2,legion:1,quick:1},
+  PRESET_DECKS:{
+    assault:{name:'공격형',deck:{strike:3,bash:2,quick:2,focus:1,pierce:1,isolate:1,oath:1,allout:1}},
+    formation:{name:'진형형',deck:{strike:2,guard:2,support:3,legion:2,phalanx:1,tactics:1,pierce:1}},
+    control:{name:'제어형',deck:{strike:2,guard:2,check:2,cripple:2,mend:1,fissure:1,tactics:1,kingarm:1}},
+    sustain:{name:'수비형',deck:{strike:2,guard:3,legion:2,mend:2,kingarm:1,tactics:1,phalanx:1}},
+  },
   DECK_SIZE:12,
+  MAX_COPIES_PER_CARD:3,
   SIEGE_BONUS:{damagePerPiece:5},
 };
 
@@ -301,6 +328,37 @@ function loadAccount(user){
   return null;
 }
 const deckTotal = d=>Object.values(d).reduce((a,b)=>a+b,0);
+const rarityLabel = r=>({common:'일반',uncommon:'전술',rare:'희귀'}[r]||'일반');
+const rarityClass = r=>r==='rare'?' rare':(r==='uncommon'?' uncommon':'');
+function cardMetaHtml(card){
+  return `<div class="meta"><span class="pill">${card.type||'전술'}</span><span class="pill${rarityClass(card.rarity)}">${rarityLabel(card.rarity)}</span></div>`;
+}
+function normalizeDeck(deck){
+  const clean={}; let total=0;
+  Object.entries(deck||{}).forEach(([id,n])=>{
+    if(!CONFIG.CARDS[id]||!CONFIG.OWNED[id])return;
+    const max=Math.min(CONFIG.OWNED[id],CONFIG.MAX_COPIES_PER_CARD);
+    const count=Math.max(0,Math.min(max,parseInt(n,10)||0));
+    if(count>0&&total<CONFIG.DECK_SIZE){
+      const add=Math.min(count,CONFIG.DECK_SIZE-total);
+      clean[id]=add; total+=add;
+    }
+  });
+  if(total<CONFIG.DECK_SIZE){
+    Object.entries(CONFIG.DEFAULT_DECK).forEach(([id,n])=>{
+      if(total>=CONFIG.DECK_SIZE)return;
+      const max=Math.min(CONFIG.OWNED[id]||0,CONFIG.MAX_COPIES_PER_CARD);
+      const cur=clean[id]||0;
+      const add=Math.min(n, max-cur, CONFIG.DECK_SIZE-total);
+      if(add>0){clean[id]=cur+add;total+=add;}
+    });
+  }
+  return clean;
+}
+function deckIsLegal(deck){
+  if(deckTotal(deck)!==CONFIG.DECK_SIZE)return false;
+  return Object.entries(deck).every(([id,n])=>CONFIG.CARDS[id]&&n>0&&n<=Math.min(CONFIG.OWNED[id]||0,CONFIG.MAX_COPIES_PER_CARD));
+}
 
 /* ---------- 화면 전환 ---------- */
 function showScreen(id){
@@ -313,7 +371,7 @@ function showScreen(id){
 function doLogin(user){
   account.username = user;
   const saved = loadAccount(user);
-  account.deck = saved ? saved.deck : {...CONFIG.DEFAULT_DECK};
+  account.deck = normalizeDeck(saved ? saved.deck : CONFIG.DEFAULT_DECK);
   saveAccount();
   document.getElementById('acc-name').textContent=user;
   document.getElementById('acc-hello').textContent=`${user} 커맨더, 환영합니다`;
@@ -349,14 +407,21 @@ function renderDeckBuilder(){
   const total=deckTotal(draftDeck);
   const cc=document.getElementById('deckcount'); cc.textContent=`${total} / ${CONFIG.DECK_SIZE}`;
   cc.className='count '+(total===CONFIG.DECK_SIZE?'ok':'bad');
+  const presets=document.getElementById('presetlist'); presets.innerHTML='';
+  Object.values(CONFIG.PRESET_DECKS).forEach(p=>{
+    const b=document.createElement('button'); b.className='presetbtn'; b.textContent=p.name;
+    b.onclick=()=>{draftDeck=normalizeDeck(p.deck);document.getElementById('deck-msg').textContent='';renderDeckBuilder();};
+    presets.appendChild(b);
+  });
   // 풀
   const pg=document.getElementById('poolgrid'); pg.innerHTML='';
   Object.entries(CONFIG.OWNED).forEach(([id,owned])=>{
     const card=CONFIG.CARDS[id]; const inDeck=draftDeck[id]||0;
+    const max=Math.min(owned,CONFIG.MAX_COPIES_PER_CARD);
     const el=document.createElement('div'); el.className='pcard';
-    el.innerHTML=`<span class="cost">${card.cost}</span><div class="cn">${card.name}</div><div class="cd">${card.desc}</div>
-      <div class="row"><span class="own">덱 ${inDeck} · 보유 ${owned}</span>
-      <button class="minibtn add" ${(inDeck>=owned||total>=CONFIG.DECK_SIZE)?'disabled':''} data-add="${id}">+ 추가</button></div>`;
+    el.innerHTML=`<span class="cost">${card.cost}</span><div class="cn">${card.name}</div>${cardMetaHtml(card)}<div class="cd">${card.desc}</div>
+      <div class="row"><span class="own">덱 ${inDeck}/${max} · 보유 ${owned}</span>
+      <button class="minibtn add" ${(inDeck>=max||total>=CONFIG.DECK_SIZE)?'disabled':''} data-add="${id}">+ 추가</button></div>`;
     pg.appendChild(el);
   });
   pg.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>{ const id=b.dataset.add; draftDeck[id]=(draftDeck[id]||0)+1; renderDeckBuilder(); });
@@ -366,14 +431,15 @@ function renderDeckBuilder(){
   if(!entries.length){ dl.innerHTML='<div style="color:var(--muted);font-size:12px">비어 있음</div>'; }
   entries.forEach(([id,n])=>{ const card=CONFIG.CARDS[id];
     const row=document.createElement('div'); row.className='dl-row';
-    row.innerHTML=`<span>${card.name} <span class="x">×${n}</span></span><button class="minibtn" data-rm="${id}">− 빼기</button>`;
+    row.innerHTML=`<span>${card.name} <span class="x">×${n} · ${card.type||'전술'}</span></span><button class="minibtn" data-rm="${id}">− 빼기</button>`;
     dl.appendChild(row); });
   dl.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{ const id=b.dataset.rm; draftDeck[id]=Math.max(0,(draftDeck[id]||0)-1); if(draftDeck[id]===0)delete draftDeck[id]; renderDeckBuilder(); });
 }
-document.getElementById('btn-defaultdeck').addEventListener('click',()=>{ draftDeck={...CONFIG.DEFAULT_DECK}; renderDeckBuilder(); document.getElementById('deck-msg').textContent=''; });
+document.getElementById('btn-defaultdeck').addEventListener('click',()=>{ draftDeck=normalizeDeck(CONFIG.DEFAULT_DECK); renderDeckBuilder(); document.getElementById('deck-msg').textContent=''; });
 document.getElementById('btn-savedeck').addEventListener('click',()=>{
   const total=deckTotal(draftDeck); const msg=document.getElementById('deck-msg');
   if(total!==CONFIG.DECK_SIZE){ msg.style.color='var(--enemy)'; msg.textContent=`덱은 정확히 ${CONFIG.DECK_SIZE}장이어야 합니다 (현재 ${total}장).`; return; }
+  if(!deckIsLegal(draftDeck)){ msg.style.color='var(--enemy)'; msg.textContent=`동일 카드는 최대 ${CONFIG.MAX_COPIES_PER_CARD}장, 보유 수량 안에서만 저장할 수 있습니다.`; return; }
   account.deck={...draftDeck}; saveAccount(); renderDeckSummary();
   msg.style.color='var(--ok)'; msg.textContent='저장 완료! 계정으로 돌아가 게임을 시작하세요.';
 });
@@ -396,6 +462,7 @@ const DIAG=[[-1,-1],[-1,1],[1,-1],[1,1]],ORTH=[[-1,0],[1,0],[0,-1],[0,1]];
 const KING8=[...DIAG,...ORTH];
 const KNIGHT=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
 const PLAYER_PAWN_DIR=-1,ENEMY_PAWN_DIR=1;
+const PROMOTION_CHOICES=['R','N','B'];
 
 let pieces=[],monsters=[];
 let state={turn:0,combats:0,combatTurns:0,phase:'player',selected:null,over:false,timer:null,monsterCursor:0,awaitingCombat:false};
@@ -480,7 +547,7 @@ function onCellClick(r,c){if(state.over||state.phase!=='player'||!state.selected
   const {moves,caps}=pieceTargets(state.selected);
   if(caps.some(([a,b])=>a===r&&b===c)){const atk=state.selected;state.selected=null;startCombat(atk,monAt(r,c),{initiator:'player'});}
   else if(moves.some(([a,b])=>a===r&&b===c)){movePiece(state.selected,r,c);endPlayerTurn();}}
-function movePiece(p,r,c){p.r=r;p.c=c;p.hasMoved=true;state.selected=null;}
+function movePiece(p,r,c){p.r=r;p.c=c;p.hasMoved=true;promotePlayerPawn(p);state.selected=null;}
 
 function endPlayerTurn(){if(state.over||state.awaitingCombat)return;
   state.turn++;state.phase='monster';render();
@@ -505,13 +572,26 @@ function stepToward(m,tr,tc){let best=null,bd=cheby(m.r,m.c,tr,tc);
   for(const[dr,dc]of KING8){const r=m.r+dr,c=m.c+dc;if(!inb(r,c)||occupied(r,c))continue;const d=cheby(r,c,tr,tc);if(d<bd){bd=d;best=[r,c];}}
   if(best){m.r=best[0];m.c=best[1];return true;}return false;}
 const adjacentTo=(m,r,c)=>cheby(m.r,m.c,r,c)===1;
+function promotePlayerPawn(p){
+  if(p.kind!=='P'||p.r!==0)return;
+  const picked=(window.prompt('폰 승급: R(룩), N(나이트), B(비숍) 중 선택','R')||'R').trim().toUpperCase()[0];
+  const next=PROMOTION_CHOICES.includes(picked)?picked:'R';
+  p.kind=next;p.max=CONFIG.PIECE_HP[next];p.hp=p.max;
+  log(`<span class="win">♟ 승급</span> 폰이 ${next}(으)로 승급했습니다.`,'win');
+}
+function promoteEnemyPawn(m){
+  if(m.type!=='p'||m.r!==N-1)return;
+  const next=CONFIG.MONSTER.r;
+  Object.assign(m,{type:'r',name:next.name,hp:next.hp,max:next.hp,atk:next.atk,arch:next.arch,hasMoved:true});
+  log(`<span class="lose">♟ 상대 폰 승급</span> 상대 폰이 룩으로 승급했습니다.`,'lose');
+}
 function enemyPawn(m){
   for(const dc of [-1,1]){
     const r=m.r+ENEMY_PAWN_DIR,c=m.c+dc;const target=inb(r,c)&&pieceAt(r,c);
     if(target){startCombat(target,m,{initiator:'monster',pawnCapture:true});return true;}
   }
   const one=m.r+ENEMY_PAWN_DIR;
-  if(inb(one,m.c)&&!occupied(one,m.c)){m.r=one;m.hasMoved=true;return true;}
+  if(inb(one,m.c)&&!occupied(one,m.c)){m.r=one;m.hasMoved=true;promoteEnemyPawn(m);return true;}
   return false;
 }
 function hunter(m){const k=pKing();if(!k)return false;
@@ -587,10 +667,10 @@ function cbEnd(win){
   CB.over=true;state.combatTurns+=CB.turn;cbRender();
   CB.piece.hp=CB.ally.hp;CB.mon.hp=CB.enemy.hp;
   if(win){cLog(`<span class="win">▶ 승리 — ${CB.enemy.name} 캡처 (아군 HP ${CB.ally.hp} 이월)</span>`);CB.mon.alive=false;
-    if(CB.opts.initiator==='player'){CB.piece.r=CB.mon.r;CB.piece.c=CB.mon.c;CB.piece.hasMoved=true;}
+    if(CB.opts.initiator==='player'){CB.piece.r=CB.mon.r;CB.piece.c=CB.mon.c;CB.piece.hasMoved=true;promotePlayerPawn(CB.piece);}
     log(`<span class="cmb">⚔ 전투 #${state.combats}</span> ${CB.enemy.name} 캡처 · ${CB.turn}턴 · ${CB.piece.kind} HP ${CB.piece.hp}`,'cmb');
   }else{cLog(`<span class="lose">▶ 패배 — ${CB.ally.kind} 사망 (${CB.enemy.name} HP ${CB.enemy.hp} 이월)</span>`);CB.piece.alive=false;
-    if(CB.opts.pawnCapture){CB.mon.r=CB.piece.r;CB.mon.c=CB.piece.c;CB.mon.hasMoved=true;}
+    if(CB.opts.pawnCapture){CB.mon.r=CB.piece.r;CB.mon.c=CB.piece.c;CB.mon.hasMoved=true;promoteEnemyPawn(CB.mon);}
     log(`<span class="cmb">⚔ 전투 #${state.combats}</span> ${CB.piece.kind} 사망 · ${CB.turn}턴 · ${CB.enemy.name} HP ${CB.enemy.hp}`,'cmb');}
   setTimeout(()=>{combatEl.style.display='none';resolveCombat(win);},700);
 }

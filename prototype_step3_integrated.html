@@ -212,6 +212,7 @@ const DIAG=[[-1,-1],[-1,1],[1,-1],[1,1]], ORTH=[[-1,0],[1,0],[0,-1],[0,1]];
 const KING8=[...DIAG,...ORTH];
 const KNIGHT=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
 const PLAYER_PAWN_DIR=-1, ENEMY_PAWN_DIR=1;
+const PROMOTION_CHOICES=['R','N','B'];
 
 /* ============================================================
    상태
@@ -328,7 +329,7 @@ function onCellClick(r,c){ if(state.over||state.phase!=='player'||!state.selecte
   if(caps.some(([a,b])=>a===r&&b===c)){ const atk=state.selected; state.selected=null; startCombat(atk, monAt(r,c), {initiator:'player'}); }
   else if(moves.some(([a,b])=>a===r&&b===c)){ movePiece(state.selected,r,c); endPlayerTurn(); }
 }
-function movePiece(p,r,c){ p.r=r;p.c=c;p.hasMoved=true; state.selected=null; }
+function movePiece(p,r,c){ p.r=r;p.c=c;p.hasMoved=true; promotePlayerPawn(p); state.selected=null; }
 
 /* ============================================================
    턴 진행
@@ -366,6 +367,19 @@ function stepToward(m,tr,tc){ let best=null,bd=cheby(m.r,m.c,tr,tc);
 const adjacentTo=(m,r,c)=>cheby(m.r,m.c,r,c)===1;
 
 // 각 AI: 행동(이동/전투)했으면 true, 할 게 없으면 false
+function promotePlayerPawn(p){
+  if(p.kind!=='P'||p.r!==0)return;
+  const picked=(window.prompt('폰 승급: R(룩), N(나이트), B(비숍) 중 선택','R')||'R').trim().toUpperCase()[0];
+  const next=PROMOTION_CHOICES.includes(picked)?picked:'R';
+  p.kind=next;p.max=CONFIG.PIECE_HP[next];p.hp=p.max;
+  log(`<span class="win">♟ 승급</span> 폰이 ${next}(으)로 승급했습니다.`,'win');
+}
+function promoteEnemyPawn(m){
+  if(m.type!=='p'||m.r!==N-1)return;
+  const next=CONFIG.MONSTER.r;
+  Object.assign(m,{type:'r',name:next.name,hp:next.hp,max:next.hp,atk:next.atk,arch:next.arch,hasMoved:true});
+  log(`<span class="lose">♟ 상대 폰 승급</span> 상대 폰이 룩으로 승급했습니다.`,'lose');
+}
 function enemyPawn(m){
   for(const dc of [-1,1]){
     const r=m.r+ENEMY_PAWN_DIR,c=m.c+dc;
@@ -373,7 +387,7 @@ function enemyPawn(m){
     if(target){ startCombat(target,m,{initiator:'monster', pawnCapture:true}); return true; }
   }
   const one=m.r+ENEMY_PAWN_DIR;
-  if(inb(one,m.c)&&!occupied(one,m.c)){m.r=one;m.hasMoved=true;return true;}
+  if(inb(one,m.c)&&!occupied(one,m.c)){m.r=one;m.hasMoved=true;promoteEnemyPawn(m);return true;}
   return false;
 }
 function hunter(m){ const k=pKing(); if(!k)return false;
@@ -478,12 +492,12 @@ function cbEnd(win){
   if(win){
     cLog(`<span class="win">▶ 승리 — ${CB.enemy.name} 캡처 (아군 HP ${CB.ally.hp} 이월)</span>`);
     CB.mon.alive=false;
-    if(CB.opts.initiator==='player'){ CB.piece.r=CB.mon.r; CB.piece.c=CB.mon.c; CB.piece.hasMoved=true; } // 그 칸으로 이동
+    if(CB.opts.initiator==='player'){ CB.piece.r=CB.mon.r; CB.piece.c=CB.mon.c; CB.piece.hasMoved=true; promotePlayerPawn(CB.piece); } // 그 칸으로 이동
     log(`<span class="cmb">⚔ 전투 #${state.combats}</span> ${CB.enemy.name} 캡처 · ${CB.turn}턴 · ${CB.piece.kind} HP ${CB.piece.hp} 잔존`,'cmb');
   } else {
     cLog(`<span class="lose">▶ 패배 — ${CB.ally.kind} 사망 (${CB.enemy.name} HP ${CB.enemy.hp} 이월)</span>`);
     CB.piece.alive=false;
-    if(CB.opts.pawnCapture){ CB.mon.r=CB.piece.r; CB.mon.c=CB.piece.c; CB.mon.hasMoved=true; }
+    if(CB.opts.pawnCapture){ CB.mon.r=CB.piece.r; CB.mon.c=CB.piece.c; CB.mon.hasMoved=true; promoteEnemyPawn(CB.mon); }
     log(`<span class="cmb">⚔ 전투 #${state.combats}</span> ${CB.piece.kind} 사망 · ${CB.turn}턴 · ${CB.enemy.name} HP ${CB.enemy.hp} 잔존`,'cmb');
   }
   setTimeout(()=>{ combatEl.style.display='none'; resolveCombat(win); }, 700);

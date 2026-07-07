@@ -166,6 +166,7 @@ const KNIGHT = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
 // 폰: 전진 1칸, 캡처는 전진 대각 1칸
 const PLAYER_PAWN_DIR = -1;
 const ENEMY_PAWN_DIR = 1;
+const PROMOTION_CHOICES = ['R','N','B'];
 
 /* ============================================================
    상태
@@ -331,13 +332,13 @@ function onCellClick(r,c){
   else if(moves.some(([a,b])=>a===r&&b===c)){ movePiece(state.selected,r,c); endPlayerTurn(); }
 }
 
-function movePiece(p,r,c){ p.r=r;p.c=c;p.hasMoved=true; state.selected=null; }
+function movePiece(p,r,c){ p.r=r;p.c=c;p.hasMoved=true; promotePlayerPawn(p); state.selected=null; }
 
 function playerCapture(p,r,c){
   const m=monAt(r,c);
   state.combats++;
   log(`<span class="cmb">⚔ 전투 #${state.combats}</span> ${p.kind}(아군) → ${m.name} · 스텁: 공격자 승 → ${m.name} 캡처`,'cmb');
-  m.alive=false; p.r=r;p.c=c;p.hasMoved=true; // 캡처 성공: 그 칸으로 이동, HP 유지(스텁)
+  m.alive=false; p.r=r;p.c=c;p.hasMoved=true; promotePlayerPawn(p); // 캡처 성공: 그 칸으로 이동
   state.selected=null;
   endPlayerTurn();
 }
@@ -389,19 +390,35 @@ function stepToward(m,tr,tc){
 }
 function adjacentTo(m,r,c){ return cheby(m.r,m.c,r,c)===1; }
 
+function promotePlayerPawn(p){
+  if(p.kind!=='P'||p.r!==0) return;
+  const picked=(window.prompt('폰 승급: R(룩), N(나이트), B(비숍) 중 선택', 'R')||'R').trim().toUpperCase()[0];
+  const next=PROMOTION_CHOICES.includes(picked)?picked:'R';
+  p.kind=next;p.max=CONFIG.PIECE_HP[next];p.hp=p.max;
+  log(`<span class="win">♟ 승급</span> 폰이 ${next}(으)로 승급했습니다.`,'win');
+}
+
+function promoteEnemyPawn(m){
+  if(m.type!=='p'||m.r!==N-1) return;
+  const next=CONFIG.MONSTER.r;
+  Object.assign(m,{type:'r',name:next.name,hp:next.hp,max:next.hp,atk:next.atk,arch:next.arch,hasMoved:true});
+  log(`<span class="lose">♟ 상대 폰 승급</span> 상대 폰이 룩으로 승급했습니다.`,'lose');
+}
+
 function enemyPawn(m){
   for(const dc of [-1,1]){
     const r=m.r+ENEMY_PAWN_DIR,c=m.c+dc;
     const target=inb(r,c)&&pieceAt(r,c);
     if(target){
       monsterAttack(m,target);
-      if(!target.alive){ m.r=r; m.c=c; m.hasMoved=true; }
+      if(!target.alive){ m.r=r; m.c=c; m.hasMoved=true; promoteEnemyPawn(m); }
       return true;
     }
   }
   const one=m.r+ENEMY_PAWN_DIR;
   if(inb(one,m.c)&&!occupied(one,m.c)){
     m.r=one;m.hasMoved=true;
+    promoteEnemyPawn(m);
     return true;
   }
   return false;
