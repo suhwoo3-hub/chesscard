@@ -211,7 +211,7 @@ const coordName=(r,c)=>`${FILES[r]||'?'}${c+1}`;
 const DIAG=[[-1,-1],[-1,1],[1,-1],[1,1]], ORTH=[[-1,0],[1,0],[0,-1],[0,1]];
 const KING8=[...DIAG,...ORTH];
 const KNIGHT=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-const PLAYER_PAWN_DIR=-1, ENEMY_PAWN_DIR=1, PLAYER_PAWN_HOME=4, ENEMY_PAWN_HOME=1;
+const PLAYER_PAWN_DIR=-1, ENEMY_PAWN_DIR=1;
 
 /* ============================================================
    상태
@@ -242,8 +242,6 @@ function pieceTargets(p){
     const one=p.r+PLAYER_PAWN_DIR;
     if(inb(one,p.c)&&!occupied(one,p.c)){
       moves.push([one,p.c]);
-      const two=p.r+PLAYER_PAWN_DIR*2;
-      if(!p.hasMoved&&p.r===PLAYER_PAWN_HOME&&inb(two,p.c)&&!occupied(two,p.c))moves.push([two,p.c]);
     }
     for(const dc of [-1,1]){const r=p.r+PLAYER_PAWN_DIR,c=p.c+dc; const m=inb(r,c)&&monAt(r,c); if(m&&m.type!=='X')caps.push([r,c]);}
   } else if(p.kind==='B')slide(DIAG);
@@ -375,10 +373,6 @@ function enemyPawn(m){
     if(target){ startCombat(target,m,{initiator:'monster', pawnCapture:true}); return true; }
   }
   const one=m.r+ENEMY_PAWN_DIR;
-  const two=m.r+ENEMY_PAWN_DIR*2;
-  if(!m.hasMoved&&m.r===ENEMY_PAWN_HOME&&inb(two,m.c)&&!occupied(one,m.c)&&!occupied(two,m.c)){
-    m.r=two;m.hasMoved=true;return true;
-  }
   if(inb(one,m.c)&&!occupied(one,m.c)){m.r=one;m.hasMoved=true;return true;}
   return false;
 }

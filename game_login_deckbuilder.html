@@ -395,7 +395,7 @@ const coordName=(r,c)=>`${FILES[r]||'?'}${c+1}`;
 const DIAG=[[-1,-1],[-1,1],[1,-1],[1,1]],ORTH=[[-1,0],[1,0],[0,-1],[0,1]];
 const KING8=[...DIAG,...ORTH];
 const KNIGHT=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-const PLAYER_PAWN_DIR=-1,ENEMY_PAWN_DIR=1,PLAYER_PAWN_HOME=4,ENEMY_PAWN_HOME=1;
+const PLAYER_PAWN_DIR=-1,ENEMY_PAWN_DIR=1;
 
 let pieces=[],monsters=[];
 let state={turn:0,combats:0,combatTurns:0,phase:'player',selected:null,over:false,timer:null,monsterCursor:0,awaitingCombat:false};
@@ -418,7 +418,7 @@ function pieceTargets(p){
   const slide=(dirs)=>{for(const[dr,dc]of dirs){let r=p.r+dr,c=p.c+dc;
     while(inb(r,c)){const o=occupied(r,c);if(!o){moves.push([r,c]);}else{if(monAt(r,c)&&monAt(r,c).type!=='X')caps.push([r,c]);break;}r+=dr;c+=dc;}}};
   if(p.kind==='P'){const one=p.r+PLAYER_PAWN_DIR;
-    if(inb(one,p.c)&&!occupied(one,p.c)){moves.push([one,p.c]);const two=p.r+PLAYER_PAWN_DIR*2;if(!p.hasMoved&&p.r===PLAYER_PAWN_HOME&&inb(two,p.c)&&!occupied(two,p.c))moves.push([two,p.c]);}
+    if(inb(one,p.c)&&!occupied(one,p.c))moves.push([one,p.c]);
     for(const dc of [-1,1]){const r=p.r+PLAYER_PAWN_DIR,c=p.c+dc;const m=inb(r,c)&&monAt(r,c);if(m&&m.type!=='X')caps.push([r,c]);}}
   else if(p.kind==='B')slide(DIAG); else if(p.kind==='R')slide(ORTH);
   else if(p.kind==='N'){for(const[dr,dc]of KNIGHT){const r=p.r+dr,c=p.c+dc;if(!inb(r,c))continue;const o=occupied(r,c);if(!o)moves.push([r,c]);else if(monAt(r,c)&&monAt(r,c).type!=='X')caps.push([r,c]);}}
@@ -510,8 +510,7 @@ function enemyPawn(m){
     const r=m.r+ENEMY_PAWN_DIR,c=m.c+dc;const target=inb(r,c)&&pieceAt(r,c);
     if(target){startCombat(target,m,{initiator:'monster',pawnCapture:true});return true;}
   }
-  const one=m.r+ENEMY_PAWN_DIR,two=m.r+ENEMY_PAWN_DIR*2;
-  if(!m.hasMoved&&m.r===ENEMY_PAWN_HOME&&inb(two,m.c)&&!occupied(one,m.c)&&!occupied(two,m.c)){m.r=two;m.hasMoved=true;return true;}
+  const one=m.r+ENEMY_PAWN_DIR;
   if(inb(one,m.c)&&!occupied(one,m.c)){m.r=one;m.hasMoved=true;return true;}
   return false;
 }
