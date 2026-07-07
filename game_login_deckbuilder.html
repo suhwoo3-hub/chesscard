@@ -11,7 +11,7 @@
     --move:#2f6f4d; --cap:#8a3030; --threat:#3a2740; --sel:#d8a12a;
     --energy:#ffcf6b; --block:#7fd6ff; --dmg:#ff8a6b; --card:#232b41; --cardEdge:#3a456b;
     --ok:#4bd07a;
-    --cell-size:clamp(44px, 10vw, 72px); --board-gap:3px;
+    --cell-size:clamp(38px, 8.5vw, 64px); --board-gap:3px;
   }
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:14px}
@@ -102,10 +102,14 @@
   .cell.enemyTo{box-shadow:inset 0 0 0 4px #ff6b4a;background:#3a2430}
   .cell.selected{outline:3px solid var(--sel);outline-offset:-3px}
   .coord{position:absolute;top:2px;left:3px;font-size:9px;color:#4a5170}
-  .piece{width:calc(var(--cell-size)*.78);height:calc(var(--cell-size)*.78);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,.4);cursor:pointer;position:relative;z-index:2}
-  .piece.p{background:var(--player)} .piece.e{background:var(--enemy)} .piece.boss{background:var(--boss)}
-  .piece .g{font-weight:700;font-size:16px} .piece .st{font-size:9px;margin-top:2px;opacity:.95}
-  .piece.selectable:hover{filter:brightness(1.15)}
+  .piece{width:calc(var(--cell-size)*.9);height:calc(var(--cell-size)*.9);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;cursor:pointer;position:relative;z-index:2;filter:drop-shadow(0 3px 3px rgba(0,0,0,.55))}
+  .piece::after{content:"";position:absolute;left:19%;right:19%;bottom:5px;height:5px;border-radius:50%;background:rgba(0,0,0,.35);z-index:-1}
+  .piece .g{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:calc(var(--cell-size)*.62);line-height:.78;text-shadow:0 2px 0 rgba(0,0,0,.45),0 0 10px rgba(255,255,255,.14)}
+  .piece.p .g{color:#eef4ff;-webkit-text-stroke:1px #7ca8ff}
+  .piece.e .g{color:#ffd9ce;-webkit-text-stroke:1px #a13a2f}
+  .piece.boss .g{color:#f2d0ff;-webkit-text-stroke:1px #7a2c8d;text-shadow:0 2px 0 rgba(0,0,0,.45),0 0 12px rgba(195,65,224,.55)}
+  .piece .st{position:absolute;bottom:0;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:9px;font-weight:800;padding:2px 5px;border-radius:999px;background:rgba(10,12,18,.86);border:1px solid rgba(255,255,255,.18);color:#f6f0df;box-shadow:0 1px 2px rgba(0,0,0,.35)}
+  .piece.selectable:hover{filter:drop-shadow(0 3px 3px rgba(0,0,0,.55)) brightness(1.15);transform:translateY(-1px)}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;width:290px}
   .panel h2{font-size:12px;margin:0 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
   .stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line)}
@@ -179,7 +183,7 @@
       </div>
       <div class="cardpanel">
         <h3>⚔ 스테이지</h3>
-        <p>숲 입구 — 상대 군대를 포위(체크메이트)하고 보스킹을 카드 전투로 제압하면 클리어.</p>
+        <p>숲 입구 — 상대 군대를 포위(체크메이트)하고 상대 킹을 카드 전투로 제압하면 클리어.</p>
         <button class="btn ok" id="btn-play" style="width:100%">게임 시작</button>
       </div>
     </div>
@@ -230,7 +234,7 @@
           <span class="swatch" style="background:var(--move)"></span>이동
           <span class="swatch" style="background:var(--cap)"></span>캡처(전투)
           <span class="swatch" style="background:var(--threat)"></span>내 위협범위
-          <br>몬스터 캡처 클릭 → 카드 전투. 파랑=아군, 빨강=상대, 보라=보스킹.
+          <br>상대 기물 캡처 클릭 → 카드 전투. 파랑=아군, 빨강=상대, 보라=상대 킹.
         </div>
       </div>
     </div>
@@ -270,8 +274,8 @@
    CONFIG
    ============================================================ */
 const CONFIG = {
-  BOARD_SIZE:6, DIAMOND_VIEW:false,
-  PIECE_HP:{P:10,B:12,N:14,R:18,K:25},
+  BOARD_SIZE:8, DIAMOND_VIEW:false,
+  PIECE_HP:{P:10,B:12,N:14,R:18,Q:22,K:25},
   MONSTER:{
     g:{name:'고블린',hp:12,atk:6,arch:'hunter',script:[{atk:6}]},
     w:{name:'늑대',hp:15,atk:7,arch:'interceptor',script:[{atk:6},{atk:6},{atk:10}]},
@@ -280,9 +284,10 @@ const CONFIG = {
     b:{name:'상대 비숍',hp:12,atk:6,arch:'escort',script:[{atk:6},{atk:6},{atk:11}]},
     n:{name:'상대 나이트',hp:14,atk:7,arch:'interceptor',script:[{atk:6},{atk:6},{atk:10}]},
     r:{name:'상대 룩',hp:18,atk:8,arch:'escort',script:[{atk:8},{atk:8},{atk:13}]},
-    X:{name:'보스킹',hp:60,atk:12,arch:'boss',script:[{atk:12},{atk:9},{atk:9},{atk:20}]},
+    q:{name:'상대 퀸',hp:22,atk:10,arch:'interceptor',script:[{atk:8},{atk:10},{atk:15}]},
+    X:{name:'상대 킹',hp:25,atk:12,arch:'boss',script:[{atk:12},{atk:9},{atk:9},{atk:20}]},
   },
-  LAYOUT:['bnrXnb','pppppp','......','......','PPPPPP','BNKRNB'],
+  LAYOUT:['rnbqXbnr','pppppppp','........','........','........','........','PPPPPPPP','RNBQKBNR'],
   ENERGY_PER_TURN:3, HAND_SIZE:5,
   CARDS:{
     strike: {name:'타격',cost:1,kind:'damage',value:5,type:'공격',rarity:'common',desc:'5 데미지'},
@@ -459,12 +464,14 @@ function playerDeckFlat(){ const arr=[]; Object.entries(account.deck).forEach(([
 const N=CONFIG.BOARD_SIZE;
 const inb=(r,c)=>r>=0&&r<N&&c>=0&&c<N;
 const FILES='abcdefghijklmnopqrstuvwxyz';
-const coordName=(r,c)=>`${FILES[r]||'?'}${c+1}`;
+const coordName=(r,c)=>`${FILES[c]||'?'}${N-r}`;
 const DIAG=[[-1,-1],[-1,1],[1,-1],[1,1]],ORTH=[[-1,0],[1,0],[0,-1],[0,1]];
 const KING8=[...DIAG,...ORTH];
 const KNIGHT=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
 const PLAYER_PAWN_DIR=-1,ENEMY_PAWN_DIR=1;
-const PROMOTION_CHOICES=['R','N','B'];
+const PROMOTION_CHOICES=['Q','R','N','B'];
+const PLAYER_GLYPH={P:'♙',B:'♗',N:'♘',R:'♖',Q:'♕',K:'♔'};
+const ENEMY_GLYPH={p:'♟',b:'♝',n:'♞',r:'♜',q:'♛',X:'♚',g:'♟',w:'♞',o:'♜'};
 
 let pieces=[],monsters=[];
 let state={turn:0,combats:0,combatTurns:0,phase:'player',selected:null,over:false,timer:null,monsterCursor:0,awaitingCombat:false,enemyAction:null};
@@ -472,8 +479,8 @@ let state={turn:0,combats:0,combatTurns:0,phase:'player',selected:null,over:fals
 function buildFromLayout(){
   pieces=[];monsters=[];let pid=0,mid=0;
   CONFIG.LAYOUT.forEach((row,r)=>[...row].forEach((ch,c)=>{
-    if('PBNRK'.includes(ch))pieces.push({id:'p'+(pid++),kind:ch,hp:CONFIG.PIECE_HP[ch],max:CONFIG.PIECE_HP[ch],r,c,alive:true,hasMoved:false});
-    else if('gwopbrnX'.includes(ch)){const m=CONFIG.MONSTER[ch];monsters.push({id:'m'+(mid++),type:ch,name:m.name,hp:m.hp,max:m.hp,atk:m.atk,arch:m.arch,r,c,alive:true,hasMoved:false});}
+    if('PBNRQK'.includes(ch))pieces.push({id:'p'+(pid++),kind:ch,hp:CONFIG.PIECE_HP[ch],max:CONFIG.PIECE_HP[ch],r,c,alive:true,hasMoved:false});
+    else if('gwopbrnqX'.includes(ch)){const m=CONFIG.MONSTER[ch];monsters.push({id:'m'+(mid++),type:ch,name:m.name,hp:m.hp,max:m.hp,atk:m.atk,arch:m.arch,r,c,alive:true,hasMoved:false});}
   }));
 }
 const pieceAt=(r,c)=>pieces.find(p=>p.alive&&p.r===r&&p.c===c);
@@ -490,7 +497,7 @@ function pieceTargets(p){
   if(p.kind==='P'){const one=p.r+PLAYER_PAWN_DIR;
     if(inb(one,p.c)&&!occupied(one,p.c))moves.push([one,p.c]);
     for(const dc of [-1,1]){const r=p.r+PLAYER_PAWN_DIR,c=p.c+dc;const m=inb(r,c)&&monAt(r,c);if(m&&m.type!=='X')caps.push([r,c]);}}
-  else if(p.kind==='B')slide(DIAG); else if(p.kind==='R')slide(ORTH);
+  else if(p.kind==='B')slide(DIAG); else if(p.kind==='R')slide(ORTH); else if(p.kind==='Q')slide(KING8);
   else if(p.kind==='N'){for(const[dr,dc]of KNIGHT){const r=p.r+dr,c=p.c+dc;if(!inb(r,c))continue;const o=occupied(r,c);if(!o)moves.push([r,c]);else if(monAt(r,c)&&monAt(r,c).type!=='X')caps.push([r,c]);}}
   else if(p.kind==='K'){for(const[dr,dc]of KING8){const r=p.r+dr,c=p.c+dc;if(!inb(r,c))continue;const o=occupied(r,c);if(!o)moves.push([r,c]);else if(monAt(r,c)&&monAt(r,c).type!=='X')caps.push([r,c]);}}
   return {moves,caps};
@@ -499,7 +506,7 @@ function pieceThreat(p){
   const cells=[];
   const slide=(dirs)=>{for(const[dr,dc]of dirs){let r=p.r+dr,c=p.c+dc;while(inb(r,c)){cells.push([r,c]);if(occupied(r,c))break;r+=dr;c+=dc;}}};
   if(p.kind==='P'){for(const dc of [-1,1]){const r=p.r+PLAYER_PAWN_DIR,c=p.c+dc;if(inb(r,c))cells.push([r,c]);}}
-  else if(p.kind==='B')slide(DIAG); else if(p.kind==='R')slide(ORTH);
+  else if(p.kind==='B')slide(DIAG); else if(p.kind==='R')slide(ORTH); else if(p.kind==='Q')slide(KING8);
   else if(p.kind==='N'){for(const[dr,dc]of KNIGHT){const r=p.r+dr,c=p.c+dc;if(inb(r,c))cells.push([r,c]);}}
   else if(p.kind==='K'){for(const[dr,dc]of KING8){const r=p.r+dr,c=p.c+dc;if(inb(r,c))cells.push([r,c]);}}
   return cells;
@@ -529,10 +536,10 @@ function render(){
     if(p){const el=document.createElement('div');el.className='piece p';
       if(sel&&sel.id===p.id)cell.classList.add('selected');
       if(state.phase==='player'&&!state.over)el.classList.add('selectable');
-      el.innerHTML=`<span class="g">${p.kind}</span><span class="st">${p.hp}❤</span>`;
+      el.innerHTML=`<span class="g">${PLAYER_GLYPH[p.kind]||p.kind}</span><span class="st">${p.hp}❤</span>`;
       el.onclick=(e)=>{e.stopPropagation();onPieceClick(p);};cell.appendChild(el);
     }else if(m){const el=document.createElement('div');el.className='piece '+(m.type==='X'?'boss':'e');
-      const glyph=m.type==='X'?'♛':m.type.toUpperCase();
+      const glyph=ENEMY_GLYPH[m.type]||'♟';
       el.innerHTML=`<span class="g">${glyph}</span><span class="st">${m.hp}❤ ${m.atk}⚔</span>`;cell.appendChild(el);}
     cell.onclick=()=>onCellClick(r,c);boardEl.appendChild(cell);
   }
@@ -583,16 +590,16 @@ function markEnemyAction(fromR,fromC,toR,toC,label){state.enemyAction={from:from
 function moveMonster(m,r,c,label){const fr=m.r,fc=m.c;m.r=r;m.c=c;m.hasMoved=true;markEnemyAction(fr,fc,r,c,label);}
 function promotePlayerPawn(p){
   if(p.kind!=='P'||p.r!==0)return;
-  const picked=(window.prompt('폰 승급: R(룩), N(나이트), B(비숍) 중 선택','R')||'R').trim().toUpperCase()[0];
-  const next=PROMOTION_CHOICES.includes(picked)?picked:'R';
+  const picked=(window.prompt('폰 승급: Q(퀸), R(룩), N(나이트), B(비숍) 중 선택','Q')||'Q').trim().toUpperCase()[0];
+  const next=PROMOTION_CHOICES.includes(picked)?picked:'Q';
   p.kind=next;p.max=CONFIG.PIECE_HP[next];p.hp=p.max;
   log(`<span class="win">♟ 승급</span> 폰이 ${next}(으)로 승급했습니다.`,'win');
 }
 function promoteEnemyPawn(m){
   if(m.type!=='p'||m.r!==N-1)return;
-  const next=CONFIG.MONSTER.r;
-  Object.assign(m,{type:'r',name:next.name,hp:next.hp,max:next.hp,atk:next.atk,arch:next.arch,hasMoved:true});
-  log(`<span class="lose">♟ 상대 폰 승급</span> 상대 폰이 룩으로 승급했습니다.`,'lose');
+  const next=CONFIG.MONSTER.q;
+  Object.assign(m,{type:'q',name:next.name,hp:next.hp,max:next.hp,atk:next.atk,arch:next.arch,hasMoved:true});
+  log(`<span class="lose">♟ 상대 폰 승급</span> 상대 폰이 퀸으로 승급했습니다.`,'lose');
 }
 function enemyPawn(m){
   for(const dc of [-1,1]){
@@ -626,13 +633,13 @@ function checkMate(){
     const champs=pieces.filter(p=>p.alive&&pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c));
     const champ=champs.sort((a,b2)=>b2.hp-a.hp)[0]||pKing();
     log(`<span class="win">♛ 체크메이트!</span> 보스전 — 포위 ${siege}기 · 도전자 ${champ.kind} · 보너스 +${siege*CONFIG.SIEGE_BONUS.damagePerPiece} dmg`,'win');
-    markEnemyAction(b.r,b.c,b.r,b.c,'보스킹 회피 불가 — 보스전 발동');
+    markEnemyAction(b.r,b.c,b.r,b.c,'상대 킹 회피 불가 — 보스전 발동');
     startCombat(champ,b,{initiator:'siege',siege});return true;
   }
-  if(curThreat){log('<span class="t">체크 — 보스킹 회피</span>');
+  if(curThreat){log('<span class="t">체크 — 상대 킹 회피</span>');
     if(safeExits.length){const attackers=pieces.filter(p=>p.alive&&pieceThreat(p).some(([r,c])=>r===b.r&&c===b.c));
       let best=safeExits[0],bs=-1;safeExits.forEach(([r,c])=>{let s=99;attackers.forEach(a=>s=Math.min(s,cheby(r,c,a.r,a.c)));if(s>bs){bs=s;best=[r,c];}});
-      moveMonster(b,best[0],best[1],`보스킹 회피 ${coordName(best[0],best[1])}`);}
+      moveMonster(b,best[0],best[1],`상대 킹 회피 ${coordName(best[0],best[1])}`);}
     return true;}
   return false;
 }

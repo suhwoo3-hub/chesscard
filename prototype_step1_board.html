@@ -9,7 +9,7 @@
     --bg:#12141c; --panel:#1b1e2b; --line:#2c3145; --ink:#e8ebf5; --muted:#8b93ad;
     --player:#3f7fff; --enemy:#e0533d; --boss:#c341e0; --cell:#232839; --cell2:#1d2231;
     --move:#2f6f4d; --cap:#8a3030; --threat:#3a2740; --sel:#d8a12a;
-    --cell-size:clamp(44px, 10vw, 76px);
+    --cell-size:clamp(38px, 8.5vw, 68px);
     --board-gap:3px;
   }
   *{box-sizing:border-box}
@@ -33,14 +33,15 @@
   .cell.enemyTo{box-shadow:inset 0 0 0 4px #ff6b4a;background:#3a2430}
   .cell.selected{outline:3px solid var(--sel);outline-offset:-3px}
   .coord{position:absolute;top:2px;left:3px;font-size:9px;color:#4a5170}
-  .piece{width:calc(var(--cell-size) * .78);height:calc(var(--cell-size) * .78);border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;box-shadow:0 2px 4px rgba(0,0,0,.4);cursor:pointer;position:relative;z-index:2}
-  .piece.p{background:var(--player)}
-  .piece.e{background:var(--enemy)}
-  .piece.boss{background:var(--boss)}
-  .piece .g{font-weight:700;font-size:17px}
-  .piece .st{font-size:9px;margin-top:2px;opacity:.95}
+  .piece{width:calc(var(--cell-size) * .9);height:calc(var(--cell-size) * .9);display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;filter:drop-shadow(0 3px 3px rgba(0,0,0,.55));cursor:pointer;position:relative;z-index:2}
+  .piece::after{content:"";position:absolute;left:19%;right:19%;bottom:5px;height:5px;border-radius:50%;background:rgba(0,0,0,.35);z-index:-1}
+  .piece .g{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:calc(var(--cell-size) * .62);line-height:.78;text-shadow:0 2px 0 rgba(0,0,0,.45),0 0 10px rgba(255,255,255,.14)}
+  .piece.p .g{color:#eef4ff;-webkit-text-stroke:1px #7ca8ff}
+  .piece.e .g{color:#ffd9ce;-webkit-text-stroke:1px #a13a2f}
+  .piece.boss .g{color:#f2d0ff;-webkit-text-stroke:1px #7a2c8d;text-shadow:0 2px 0 rgba(0,0,0,.45),0 0 12px rgba(195,65,224,.55)}
+  .piece .st{position:absolute;bottom:0;left:50%;transform:translateX(-50%);white-space:nowrap;font-size:9px;font-weight:800;padding:2px 5px;border-radius:999px;background:rgba(10,12,18,.86);border:1px solid rgba(255,255,255,.18);color:#f6f0df;box-shadow:0 1px 2px rgba(0,0,0,.35)}
   .piece.selectable{cursor:pointer}
-  .piece.selectable:hover{filter:brightness(1.15)}
+  .piece.selectable:hover{filter:drop-shadow(0 3px 3px rgba(0,0,0,.55)) brightness(1.15);transform:translateY(-1px)}
   .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;width:300px}
   .panel h2{font-size:13px;margin:0 0 8px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
   .stat{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line)}
@@ -78,7 +79,7 @@
         <span class="swatch" style="background:var(--cap)"></span>캡처 가능
         <span class="swatch" style="background:var(--threat)"></span>내 위협범위(왕 체크용)
         <span class="swatch" style="background:var(--sel)"></span>선택됨
-        <br>기물 클릭 → 이동/캡처 지점 하이라이트. 파랑=아군, 빨강=몬스터, 보라=보스킹.
+        <br>기물 클릭 → 이동/캡처 지점 하이라이트. 파랑=아군, 빨강=상대, 보라=상대 킹.
       </div>
     </div>
   </div>
@@ -110,11 +111,11 @@
    밸런스는 코드 로직을 건드리지 말고 이 객체만 수정하세요.
    ============================================================ */
 const CONFIG = {
-  BOARD_SIZE: 6,               // 보드 한 변 (기본 6, 변경 가능)
+  BOARD_SIZE: 8,               // 실제 체스 보드: 8x8
   DIAMOND_VIEW: false,         // true=45도 다이아몬드 뷰(플레이어가 아래 꼭짓점) / false=정사각 그리드
 
   // 플레이어 기물 HP (스펙 2.2)
-  PIECE_HP: { P:10, B:12, N:14, R:18, K:25 },
+  PIECE_HP: { P:10, B:12, N:14, R:18, Q:22, K:25 },
 
   // 몬스터 정의 (HP: 스펙 4.1 / atk: 보드표시용 대표 공격력 = 튜닝레버)
   MONSTER: {
@@ -125,19 +126,20 @@ const CONFIG = {
     b: { name:'상대 비숍', hp:12, atk:6,  arch:'escort'      },
     r: { name:'상대 룩', hp:18, atk:8,  arch:'escort'      },
     n: { name:'상대 나이트', hp:14, atk:7,  arch:'interceptor' },
-    X: { name:'보스킹', hp:60, atk:12, arch:'boss'        },
+    q: { name:'상대 퀸', hp:22, atk:10, arch:'interceptor' },
+    X: { name:'상대 킹', hp:25, atk:12, arch:'boss'        },
   },
 
-  // 배치도 (윗줄이 row0=상단). 다이아몬드 뷰 기준 X=12시 꼭짓점, K=6시 꼭짓점.
-  //  P폰 B비숍 N나이트 R룩 K킹 / p상대폰 b상대비숍 r상대룩 n상대나이트 X보스킹 / .빈칸
-  //  ※ 시작 배치는 스펙 6절의 '스테이지 배치표(미결·레벨디자인)'라 임시값입니다. 자유 편집 가능.
+  // 실제 체스 초기 배치. X는 내부 상대 킹 코드이며 화면에는 검은 킹으로 표시됩니다.
   LAYOUT: [
-    'bnrXnb',   // a1,a6 상대 비숍 / a2,a5 상대 나이트 / a3 상대 룩 / a4 보스킹
-    'pppppp',   // b1~b6 상대 폰
-    '......',
-    '......',
-    'PPPPPP',   // e1~e6 플레이어 폰
-    'BNKRNB',   // f1,f6 비숍 / f2,f5 나이트 / f3 킹 / f4 룩
+    'rnbqXbnr',
+    'pppppppp',
+    '........',
+    '........',
+    '........',
+    '........',
+    'PPPPPPPP',
+    'RNBQKBNR',
   ],
 
   // 포위 보너스 (스펙 2.4) — 2단계 전투에서 사용, 여기선 카운트만 표시
@@ -159,7 +161,7 @@ const CONFIG = {
 const N = CONFIG.BOARD_SIZE;
 const inb = (r,c)=> r>=0 && r<N && c>=0 && c<N;
 const FILES = 'abcdefghijklmnopqrstuvwxyz';
-const coordName = (r,c)=> `${FILES[r]||'?'}${c+1}`;
+const coordName = (r,c)=> `${FILES[c]||'?'}${N-r}`;
 const DIAG = [[-1,-1],[-1,1],[1,-1],[1,1]];
 const ORTH = [[-1,0],[1,0],[0,-1],[0,1]];
 const KING8 = [...DIAG,...ORTH];
@@ -168,7 +170,9 @@ const KNIGHT = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
 // 폰: 전진 1칸, 캡처는 전진 대각 1칸
 const PLAYER_PAWN_DIR = -1;
 const ENEMY_PAWN_DIR = 1;
-const PROMOTION_CHOICES = ['R','N','B'];
+const PROMOTION_CHOICES = ['Q','R','N','B'];
+const PLAYER_GLYPH = {P:'♙', B:'♗', N:'♘', R:'♖', Q:'♕', K:'♔'};
+const ENEMY_GLYPH = {p:'♟', b:'♝', n:'♞', r:'♜', q:'♛', X:'♚', g:'♟', w:'♞', o:'♜'};
 
 /* ============================================================
    상태
@@ -181,9 +185,9 @@ function buildFromLayout(){
   pieces=[]; monsters=[]; let pid=0, mid=0;
   CONFIG.LAYOUT.forEach((row,r)=>{
     [...row].forEach((ch,c)=>{
-      if('PBNRK'.includes(ch)){
+      if('PBNRQK'.includes(ch)){
         pieces.push({id:'p'+(pid++),kind:ch,hp:CONFIG.PIECE_HP[ch],max:CONFIG.PIECE_HP[ch],r,c,alive:true,hasMoved:false});
-      } else if('gwopbrnX'.includes(ch)){
+      } else if('gwopbrnqX'.includes(ch)){
         const m=CONFIG.MONSTER[ch];
         monsters.push({id:'m'+(mid++),type:ch,name:m.name,hp:m.hp,max:m.hp,atk:m.atk,arch:m.arch,r,c,alive:true,hasMoved:false});
       }
@@ -224,6 +228,7 @@ function pieceTargets(p){
     }
   } else if(p.kind==='B'){ slide(DIAG); }
   else if(p.kind==='R'){ slide(ORTH); }
+  else if(p.kind==='Q'){ slide(KING8); }
   else if(p.kind==='N'){
     for(const [dr,dc] of KNIGHT){ const r=p.r+dr,c=p.c+dc; if(!inb(r,c))continue; const o=occupied(r,c);
       if(!o) moves.push([r,c]); else if(monAt(r,c)&&monAt(r,c).type!=='X') caps.push([r,c]); }
@@ -243,6 +248,7 @@ function pieceThreat(p){
   if(p.kind==='P'){ for(const dc of [-1,1]){ const r=p.r+PLAYER_PAWN_DIR,c=p.c+dc; if(inb(r,c)) cells.push([r,c]); } }
   else if(p.kind==='B') slide(DIAG);
   else if(p.kind==='R') slide(ORTH);
+  else if(p.kind==='Q') slide(KING8);
   else if(p.kind==='N'){ for(const [dr,dc] of KNIGHT){ const r=p.r+dr,c=p.c+dc; if(inb(r,c)) cells.push([r,c]); } }
   else if(p.kind==='K'){ for(const [dr,dc] of KING8){ const r=p.r+dr,c=p.c+dc; if(inb(r,c)) cells.push([r,c]); } }
   return cells;
@@ -292,12 +298,12 @@ function render(){
       const el=document.createElement('div'); el.className='piece p'+(sel&&sel.id===p.id?'':'');
       if(sel&&sel.id===p.id) cell.classList.add('selected');
       if(state.phase==='player'&&!state.over) el.classList.add('selectable');
-      el.innerHTML=`<span class="g">${p.kind}</span><span class="st">${p.hp}❤</span>`;
+      el.innerHTML=`<span class="g">${PLAYER_GLYPH[p.kind]||p.kind}</span><span class="st">${p.hp}❤</span>`;
       el.onclick=(e)=>{e.stopPropagation(); onPieceClick(p);};
       cell.appendChild(el);
     } else if(m){
       const el=document.createElement('div'); el.className='piece '+(m.type==='X'?'boss':'e');
-      const glyph=m.type==='X'?'♛':m.type.toUpperCase();
+      const glyph=ENEMY_GLYPH[m.type]||'♟';
       el.innerHTML=`<span class="g">${glyph}</span><span class="st">${m.hp}❤ ${m.atk}⚔</span>`;
       cell.appendChild(el);
     }
@@ -416,17 +422,17 @@ function moveMonster(m,r,c,label){
 
 function promotePlayerPawn(p){
   if(p.kind!=='P'||p.r!==0) return;
-  const picked=(window.prompt('폰 승급: R(룩), N(나이트), B(비숍) 중 선택', 'R')||'R').trim().toUpperCase()[0];
-  const next=PROMOTION_CHOICES.includes(picked)?picked:'R';
+  const picked=(window.prompt('폰 승급: Q(퀸), R(룩), N(나이트), B(비숍) 중 선택', 'Q')||'Q').trim().toUpperCase()[0];
+  const next=PROMOTION_CHOICES.includes(picked)?picked:'Q';
   p.kind=next;p.max=CONFIG.PIECE_HP[next];p.hp=p.max;
   log(`<span class="win">♟ 승급</span> 폰이 ${next}(으)로 승급했습니다.`,'win');
 }
 
 function promoteEnemyPawn(m){
   if(m.type!=='p'||m.r!==N-1) return;
-  const next=CONFIG.MONSTER.r;
-  Object.assign(m,{type:'r',name:next.name,hp:next.hp,max:next.hp,atk:next.atk,arch:next.arch,hasMoved:true});
-  log(`<span class="lose">♟ 상대 폰 승급</span> 상대 폰이 룩으로 승급했습니다.`,'lose');
+  const next=CONFIG.MONSTER.q;
+  Object.assign(m,{type:'q',name:next.name,hp:next.hp,max:next.hp,atk:next.atk,arch:next.arch,hasMoved:true});
+  log(`<span class="lose">♟ 상대 폰 승급</span> 상대 폰이 퀸으로 승급했습니다.`,'lose');
 }
 
 function enemyPawn(m){
@@ -511,7 +517,7 @@ function checkMate(){
   }
   if(curThreat){
     // 체크: 보스는 가장 안전(가장 위협 적고 공격자에서 먼)한 칸으로 회피
-    log(`<span class="t">체크 — 보스킹 회피 이동</span>`,'t');
+    log(`<span class="t">체크 — 상대 킹 회피 이동</span>`,'t');
     // 공격자에서 가장 먼 safeExit 선택
     let best=safeExits[0];
     if(safeExits.length){
@@ -519,7 +525,7 @@ function checkMate(){
       let bestScore=-1;
       safeExits.forEach(([r,c])=>{ let s=99; attackers.forEach(a=>{ s=Math.min(s,cheby(r,c,a.r,a.c)); });
         if(s>bestScore){bestScore=s;best=[r,c];} });
-      moveMonster(b,best[0],best[1],`보스킹 회피 ${coordName(best[0],best[1])}`);
+      moveMonster(b,best[0],best[1],`상대 킹 회피 ${coordName(best[0],best[1])}`);
     }
     return true;
   }
