@@ -150,10 +150,9 @@ const CONFIG = {
 
 /* ============================================================
    기하 정의
-   - 플레이어 전진(forward) = 적 코너(우상단) 방향 = (-1,+1) 대각
-   - 폰: 좌/우/앞 1칸 이동 / 캡처는 좌·우만 (스펙 2.2)
-     매핑 → 앞=우상대각(-1,+1) 이동전용, 좌=위(-1,0) 우=오른(0,+1) 이동+캡처
-     (마주 본 폰은 앞 대각으로 서로 캡처 불가 → 전선 자연발생, 스펙 의도)
+   - 플레이어 폰 전진 = a 방향(-1, 0)
+   - 상대 폰 전진 = f 방향(+1, 0)
+   - 폰은 체스처럼 전진 1칸, 첫 이동 2칸, 캡처는 전진 대각 1칸
    ============================================================ */
 const N = CONFIG.BOARD_SIZE;
 const inb = (r,c)=> r>=0 && r<N && c>=0 && c<N;
@@ -164,9 +163,11 @@ const ORTH = [[-1,0],[1,0],[0,-1],[0,1]];
 const KING8 = [...DIAG,...ORTH];
 const KNIGHT = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
 
-// 플레이어 폰 기준(전진 우상단): 이동칸 / 캡처칸
-const PAWN_MOVE = [[-1,1],[-1,0],[0,1]];   // 앞(대각)+좌(위)+우(오른)
-const PAWN_CAP  = [[-1,0],[0,1]];          // 좌(위)+우(오른)만 캡처
+// 체스식 폰: 전진 1칸, 첫 이동 2칸, 캡처는 전진 대각 1칸
+const PLAYER_PAWN_DIR = -1;
+const ENEMY_PAWN_DIR = 1;
+const PLAYER_PAWN_HOME = 4; // e열
+const ENEMY_PAWN_HOME = 1;  // b열
 
 /* ============================================================
    상태
@@ -180,10 +181,10 @@ function buildFromLayout(){
   CONFIG.LAYOUT.forEach((row,r)=>{
     [...row].forEach((ch,c)=>{
       if('PBNRK'.includes(ch)){
-        pieces.push({id:'p'+(pid++),kind:ch,hp:CONFIG.PIECE_HP[ch],max:CONFIG.PIECE_HP[ch],r,c,alive:true});
+        pieces.push({id:'p'+(pid++),kind:ch,hp:CONFIG.PIECE_HP[ch],max:CONFIG.PIECE_HP[ch],r,c,alive:true,hasMoved:false});
       } else if('gwopbrnX'.includes(ch)){
         const m=CONFIG.MONSTER[ch];
-        monsters.push({id:'m'+(mid++),type:ch,name:m.name,hp:m.hp,max:m.hp,atk:m.atk,arch:m.arch,r,c,alive:true});
+        monsters.push({id:'m'+(mid++),type:ch,name:m.name,hp:m.hp,max:m.hp,atk:m.atk,arch:m.arch,r,c,alive:true,hasMoved:false});
       }
     });
   });
@@ -210,8 +211,17 @@ function pieceTargets(p){
     }
   };
   if(p.kind==='P'){
-    for(const [dr,dc] of PAWN_MOVE){ const r=p.r+dr,c=p.c+dc; if(inb(r,c)&&!occupied(r,c)) moves.push([r,c]); }
-    for(const [dr,dc] of PAWN_CAP){ const r=p.r+dr,c=p.c+dc; const m=inb(r,c)&&monAt(r,c); if(m&&m.type!=='X') caps.push([r,c]); }
+    const one=p.r+PLAYER_PAWN_DIR;
+    if(inb(one,p.c)&&!occupied(one,p.c)){
+      moves.push([one,p.c]);
+      const two=p.r+PLAYER_PAWN_DIR*2;
+      if(!p.hasMoved&&p.r===PLAYER_PAWN_HOME&&inb(two,p.c)&&!occupied(two,p.c)) moves.push([two,p.c]);
+    }
+    for(const dc of [-1,1]){
+      const r=p.r+PLAYER_PAWN_DIR,c=p.c+dc;
+      const m=inb(r,c)&&monAt(r,c);
+      if(m&&m.type!=='X') caps.push([r,c]);
+    }
   } else if(p.kind==='B'){ slide(DIAG); }
   else if(p.kind==='R'){ slide(ORTH); }
   else if(p.kind==='N'){
@@ -230,7 +240,7 @@ function pieceThreat(p){
   const cells=[];
   const slide=(dirs)=>{ for(const [dr,dc] of dirs){ let r=p.r+dr,c=p.c+dc;
     while(inb(r,c)){ cells.push([r,c]); if(occupied(r,c)) break; r+=dr;c+=dc; } } };
-  if(p.kind==='P'){ for(const [dr,dc] of PAWN_CAP){ const r=p.r+dr,c=p.c+dc; if(inb(r,c)) cells.push([r,c]); } }
+  if(p.kind==='P'){ for(const dc of [-1,1]){ const r=p.r+PLAYER_PAWN_DIR,c=p.c+dc; if(inb(r,c)) cells.push([r,c]); } }
   else if(p.kind==='B') slide(DIAG);
   else if(p.kind==='R') slide(ORTH);
   else if(p.kind==='N'){ for(const [dr,dc] of KNIGHT){ const r=p.r+dr,c=p.c+dc; if(inb(r,c)) cells.push([r,c]); } }
@@ -306,8 +316,8 @@ function updatePanel(tm){
   document.getElementById('phase').textContent =
     state.over ? '게임 종료' : (state.selected ? `${state.selected.kind} 선택됨 — 목적지 클릭` : '플레이어 차례 — 기물을 선택하세요');
   document.getElementById('flag').innerHTML =
-    '⚑ 확인 필요: <b>폰 전진=우상단 대각</b>으로 구현했습니다(비숍 하이웨이·폰 전선과 일관). '+
-    '킹 배치: 보스킹=12시 꼭짓점, 플레이어킹=6시 꼭짓점. 좌표는 왼쪽 꼭짓점 기준 아래=a,b,c... / 위=1,2,3... 입니다.';
+    '폰은 체스식으로 이동합니다: 전진 1칸, 첫 이동 2칸, 캡처는 전진 대각 1칸. '+
+    '좌표는 왼쪽 꼭짓점 기준 아래=a,b,c... / 위=1,2,3... 입니다.';
 }
 
 /* ============================================================
@@ -325,13 +335,13 @@ function onCellClick(r,c){
   else if(moves.some(([a,b])=>a===r&&b===c)){ movePiece(state.selected,r,c); endPlayerTurn(); }
 }
 
-function movePiece(p,r,c){ p.r=r;p.c=c; state.selected=null; }
+function movePiece(p,r,c){ p.r=r;p.c=c;p.hasMoved=true; state.selected=null; }
 
 function playerCapture(p,r,c){
   const m=monAt(r,c);
   state.combats++;
   log(`<span class="cmb">⚔ 전투 #${state.combats}</span> ${p.kind}(아군) → ${m.name} · 스텁: 공격자 승 → ${m.name} 캡처`,'cmb');
-  m.alive=false; p.r=r;p.c=c; // 캡처 성공: 그 칸으로 이동, HP 유지(스텁)
+  m.alive=false; p.r=r;p.c=c;p.hasMoved=true; // 캡처 성공: 그 칸으로 이동, HP 유지(스텁)
   state.selected=null;
   endPlayerTurn();
 }
@@ -359,10 +369,13 @@ function monsterPhase(){
     const idx=(state.monsterCursor+i)%monsters.length;
     const m=monsters[idx];
     if(!m.alive||state.over) continue;
-    if(m.arch==='hunter') hunter(m);
+    let acted=true;
+    if(m.type==='p') acted=enemyPawn(m);
+    else if(m.arch==='hunter') hunter(m);
     else if(m.arch==='interceptor') interceptor(m);
     else if(m.arch==='escort') escort(m);
     else if(m.arch==='boss') continue; // 보스는 checkMate에서 처리
+    if(!acted) continue;
     state.monsterCursor=(idx+1)%monsters.length;
     return;
   }
@@ -379,6 +392,29 @@ function stepToward(m,tr,tc){
   if(best){ m.r=best[0]; m.c=best[1]; }
 }
 function adjacentTo(m,r,c){ return cheby(m.r,m.c,r,c)===1; }
+
+function enemyPawn(m){
+  for(const dc of [-1,1]){
+    const r=m.r+ENEMY_PAWN_DIR,c=m.c+dc;
+    const target=inb(r,c)&&pieceAt(r,c);
+    if(target){
+      monsterAttack(m,target);
+      if(!target.alive){ m.r=r; m.c=c; m.hasMoved=true; }
+      return true;
+    }
+  }
+  const one=m.r+ENEMY_PAWN_DIR;
+  const two=m.r+ENEMY_PAWN_DIR*2;
+  if(!m.hasMoved&&m.r===ENEMY_PAWN_HOME&&inb(two,m.c)&&!occupied(one,m.c)&&!occupied(two,m.c)){
+    m.r=two;m.hasMoved=true;
+    return true;
+  }
+  if(inb(one,m.c)&&!occupied(one,m.c)){
+    m.r=one;m.hasMoved=true;
+    return true;
+  }
+  return false;
+}
 
 // 몬스터가 아군을 공격 → 스텁: 공격자(몬스터) 승 → 아군 사망
 function monsterAttack(m,target){
