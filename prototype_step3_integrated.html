@@ -170,18 +170,19 @@ const CONFIG = {
     w:{name:'늑대',       hp:15, atk:7,  arch:'interceptor', script:[{atk:6},{atk:6},{atk:10}]},
     o:{name:'오크',       hp:20, atk:8,  arch:'escort',      script:[{atk:8},{atk:8},{atk:14}]},
     p:{name:'상대 폰',    hp:10, atk:5,  arch:'hunter',      script:[{atk:5}]},
+    b:{name:'상대 비숍',  hp:12, atk:6,  arch:'escort',      script:[{atk:6},{atk:6},{atk:11}]},
     n:{name:'상대 나이트',hp:14, atk:7,  arch:'interceptor', script:[{atk:6},{atk:6},{atk:10}]},
     r:{name:'상대 룩',    hp:18, atk:8,  arch:'escort',      script:[{atk:8},{atk:8},{atk:13}]},
     X:{name:'보스킹',     hp:60, atk:12, arch:'boss',        script:[{atk:12},{atk:9},{atk:9},{atk:20}]},
   },
 
   LAYOUT: [
-    '....rX',
+    'bnrXnb',
     'pppppp',
     '......',
     '......',
     'PPPPPP',
-    'KR....',
+    'BNKRNB',
   ],
 
   // 전투 상수 (스펙 3.4/3.6)
@@ -222,7 +223,7 @@ function buildFromLayout(){
   pieces=[]; monsters=[]; let pid=0, mid=0;
   CONFIG.LAYOUT.forEach((row,r)=>[...row].forEach((ch,c)=>{
     if('PBNRK'.includes(ch)) pieces.push({id:'p'+(pid++),kind:ch,hp:CONFIG.PIECE_HP[ch],max:CONFIG.PIECE_HP[ch],r,c,alive:true});
-    else if('gwoprnX'.includes(ch)){ const m=CONFIG.MONSTER[ch]; monsters.push({id:'m'+(mid++),type:ch,name:m.name,hp:m.hp,max:m.hp,atk:m.atk,arch:m.arch,r,c,alive:true}); }
+    else if('gwopbrnX'.includes(ch)){ const m=CONFIG.MONSTER[ch]; monsters.push({id:'m'+(mid++),type:ch,name:m.name,hp:m.hp,max:m.hp,atk:m.atk,arch:m.arch,r,c,alive:true}); }
   }));
 }
 const pieceAt=(r,c)=>pieces.find(p=>p.alive&&p.r===r&&p.c===c);

@@ -120,21 +120,22 @@ const CONFIG = {
     w: { name:'늑대',   hp:15, atk:7,  arch:'interceptor' },
     o: { name:'오크',   hp:20, atk:8,  arch:'escort'      },
     p: { name:'상대 폰', hp:10, atk:5,  arch:'hunter'      },
+    b: { name:'상대 비숍', hp:12, atk:6,  arch:'escort'      },
     r: { name:'상대 룩', hp:18, atk:8,  arch:'escort'      },
     n: { name:'상대 나이트', hp:14, atk:7,  arch:'interceptor' },
     X: { name:'보스킹', hp:60, atk:12, arch:'boss'        },
   },
 
   // 배치도 (윗줄이 row0=상단). 다이아몬드 뷰 기준 X=12시 꼭짓점, K=6시 꼭짓점.
-  //  P폰 B비숍 N나이트 R룩 K킹 / p상대폰 r상대룩 n상대나이트 X보스킹 / .빈칸
+  //  P폰 B비숍 N나이트 R룩 K킹 / p상대폰 b상대비숍 r상대룩 n상대나이트 X보스킹 / .빈칸
   //  ※ 시작 배치는 스펙 6절의 '스테이지 배치표(미결·레벨디자인)'라 임시값입니다. 자유 편집 가능.
   LAYOUT: [
-    '....rX',   // a5 상대 룩 / a6 보스킹
+    'bnrXnb',   // a1,a6 상대 비숍 / a2,a5 상대 나이트 / a3 상대 룩 / a4 보스킹
     'pppppp',   // b1~b6 상대 폰
     '......',
     '......',
     'PPPPPP',   // e1~e6 플레이어 폰
-    'KR....',   // f1 플레이어킹 / f2 룩
+    'BNKRNB',   // f1,f6 비숍 / f2,f5 나이트 / f3 킹 / f4 룩
   ],
 
   // 포위 보너스 (스펙 2.4) — 2단계 전투에서 사용, 여기선 카운트만 표시
@@ -180,7 +181,7 @@ function buildFromLayout(){
     [...row].forEach((ch,c)=>{
       if('PBNRK'.includes(ch)){
         pieces.push({id:'p'+(pid++),kind:ch,hp:CONFIG.PIECE_HP[ch],max:CONFIG.PIECE_HP[ch],r,c,alive:true});
-      } else if('gwoprnX'.includes(ch)){
+      } else if('gwopbrnX'.includes(ch)){
         const m=CONFIG.MONSTER[ch];
         monsters.push({id:'m'+(mid++),type:ch,name:m.name,hp:m.hp,max:m.hp,atk:m.atk,arch:m.arch,r,c,alive:true});
       }
