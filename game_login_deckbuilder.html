@@ -48,7 +48,7 @@
   .hero{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:24px;margin-bottom:18px}
   .hero h2{margin:0 0 6px;font-size:22px}
   .hero p{margin:0;color:var(--muted);font-size:13px}
-  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
   @media(max-width:680px){.grid2{grid-template-columns:1fr}}
   .cardpanel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
   .cardpanel h3{margin:0 0 10px;font-size:15px}
@@ -56,6 +56,12 @@
   .decksummary{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px}
   .chip{background:#0e1017;border:1px solid var(--line);border-radius:20px;padding:4px 10px;font-size:12px}
   .chip b{color:var(--energy)}
+  .chargrid{display:grid;gap:8px}
+  .charbtn{width:100%;text-align:left;background:#101421;border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:10px;cursor:pointer}
+  .charbtn:hover{border-color:var(--player)}
+  .charbtn.active{border-color:var(--energy);background:#1f2030}
+  .charbtn strong{display:block;font-size:13px;margin-bottom:3px}
+  .charbtn span{display:block;color:var(--muted);font-size:11px;line-height:1.4}
 
   /* ---------- 덱빌더 ---------- */
   .deckwrap{display:grid;grid-template-columns:1fr 340px;gap:18px}
@@ -177,9 +183,14 @@
     <div class="grid2">
       <div class="cardpanel">
         <h3>🃏 내 덱</h3>
-        <p>커맨더 공용 덱입니다. 모든 기물이 전투에서 이 덱을 공유해요.</p>
+        <p>선택한 기사와 모든 기물이 전투에서 이 덱을 공유해요.</p>
         <div class="decksummary" id="acc-decksummary"></div>
         <button class="btn" id="btn-todeck">덱 빌딩</button>
+      </div>
+      <div class="cardpanel">
+        <h3>♔ 기사 선택</h3>
+        <p>왕실 기사는 기준 캐릭터, 다른 기사는 전용 시작 카드 2장을 받습니다.</p>
+        <div class="chargrid" id="chargrid"></div>
       </div>
       <div class="cardpanel">
         <h3>⚔ 스테이지</h3>
@@ -290,28 +301,37 @@ const CONFIG = {
   LAYOUT:['rnbqXbnr','pppppppp','........','........','........','........','PPPPPPPP','RNBQKBNR'],
   ENERGY_PER_TURN:3, HAND_SIZE:5,
   CARDS:{
-    strike: {name:'타격',cost:1,kind:'damage',value:5,type:'공격',rarity:'common',desc:'5 데미지'},
-    guard:  {name:'방패',cost:1,kind:'block',value:5,type:'방어',rarity:'common',desc:'방어 5'},
-    bash:   {name:'강타',cost:2,kind:'damage',value:9,type:'공격',rarity:'common',desc:'9 데미지'},
-    check:  {name:'견제',cost:1,kind:'damage_weaken',value:3,weaken:2,type:'제어',rarity:'common',desc:'3 데미지 + 적 다음 공격 -2'},
-    support:{name:'지원 사격',cost:1,kind:'damage_adj',per:3,type:'진형',rarity:'common',desc:'인접 아군 1기당 3 데미지'},
-    legion: {name:'군단의 방패',cost:1,kind:'block_adj',per:4,type:'진형',rarity:'common',desc:'인접 아군 1기당 방어 4'},
-    quick:  {name:'가벼운 찌르기',cost:0,kind:'damage_draw',value:3,draw:1,type:'순환',rarity:'uncommon',desc:'3 데미지 + 카드 1장 뽑기'},
-    tactics:{name:'전술 정비',cost:1,kind:'draw',draw:2,type:'순환',rarity:'uncommon',desc:'카드 2장 뽑기'},
-    focus:  {name:'집중',cost:0,kind:'energy',energy:1,type:'순환',rarity:'uncommon',desc:'이번 턴 에너지 +1'},
-    pierce: {name:'빈틈 찌르기',cost:1,kind:'damage_vulnerable',value:4,vulnerable:3,type:'제어',rarity:'uncommon',desc:'4 데미지 + 다음 피해 +3'},
-    cripple:{name:'무력화',cost:1,kind:'weaken',weaken:5,type:'제어',rarity:'uncommon',desc:'적 다음 공격 -5'},
-    mend:   {name:'응급 처치',cost:1,kind:'heal',value:4,type:'방어',rarity:'uncommon',desc:'아군 HP 4 회복'},
-    phalanx:{name:'밀집 방진',cost:2,kind:'phalanx',block:6,per:3,type:'진형',rarity:'rare',desc:'방어 6 + 인접 아군 1기당 방어 3'},
-    isolate:{name:'고립 돌파',cost:1,kind:'isolated_damage',value:4,solo:12,type:'돌파',rarity:'rare',desc:'4 데미지. 인접 아군이 없으면 12 데미지'},
-    oath:   {name:'폰의 결의',cost:1,kind:'piece_damage',value:5,piece:'P',bonus:6,type:'돌파',rarity:'uncommon',desc:'5 데미지. 폰이면 +6'},
-    kingarm:{name:'왕의 엄호',cost:1,kind:'king_block',base:4,near:10,type:'방어',rarity:'rare',desc:'방어 4. 킹과 가까우면 방어 10'},
-    fissure:{name:'균열',cost:1,kind:'bleed',value:2,bleed:3,type:'제어',rarity:'rare',desc:'2 데미지 + 매 턴 3 데미지'},
-    allout: {name:'총공세',cost:0,kind:'allout',per:5,type:'공격',rarity:'rare',desc:'남은 에너지를 모두 써서 1당 5 데미지'},
+    strike: {name:'타격',cost:1,kind:'damage',value:5,type:'공격',rarity:'common',class:'common',desc:'5 데미지'},
+    guard:  {name:'방패',cost:1,kind:'block',value:5,type:'방어',rarity:'common',class:'common',desc:'방어 5'},
+    bash:   {name:'강타',cost:2,kind:'damage',value:10,type:'공격',rarity:'common',class:'common',desc:'10 데미지'},
+    check:  {name:'견제',cost:1,kind:'damage_weaken',value:3,weaken:2,type:'제어',rarity:'common',class:'common',desc:'3 데미지 + 적 다음 공격 -2'},
+    support:{name:'지원 사격',cost:1,kind:'damage_adj',value:2,per:2,type:'진형',rarity:'common',class:'common',desc:'2 데미지 + 인접 아군 1기당 2 데미지'},
+    legion: {name:'군단의 방패',cost:1,kind:'block_adj',value:2,per:3,type:'진형',rarity:'common',class:'common',desc:'방어 2 + 인접 아군 1기당 방어 3'},
+    quick:  {name:'가벼운 찌르기',cost:0,kind:'damage_draw',value:2,draw:1,type:'순환',rarity:'uncommon',class:'common',desc:'2 데미지 + 카드 1장 뽑기'},
+    tactics:{name:'전술 정비',cost:1,kind:'draw',draw:2,type:'순환',rarity:'uncommon',class:'common',desc:'카드 2장 뽑기'},
+    focus:  {name:'집중',cost:1,kind:'energy',energy:2,type:'순환',rarity:'uncommon',class:'common',desc:'이번 턴 에너지 +2'},
+    pierce: {name:'빈틈 찌르기',cost:1,kind:'damage_vulnerable',value:4,vulnerable:3,type:'제어',rarity:'uncommon',class:'common',desc:'4 데미지 + 다음 피해 +3'},
+    cripple:{name:'무력화',cost:1,kind:'weaken',weaken:5,type:'제어',rarity:'uncommon',class:'common',desc:'적 다음 공격 -5'},
+    mend:   {name:'응급 처치',cost:1,kind:'heal',value:4,type:'방어',rarity:'uncommon',class:'common',desc:'아군 HP 4 회복'},
+    phalanx:{name:'밀집 방진',cost:2,kind:'phalanx',block:6,per:3,type:'진형',rarity:'rare',class:'common',desc:'방어 6 + 인접 아군 1기당 방어 3'},
+    isolate:{name:'고립 돌파',cost:1,kind:'isolated_damage',value:4,solo:12,type:'돌파',rarity:'rare',class:'common',desc:'4 데미지. 인접 아군이 없으면 12 데미지'},
+    oath:   {name:'폰의 결의',cost:1,kind:'piece_damage',value:5,piece:'P',bonus:6,type:'돌파',rarity:'uncommon',class:'common',desc:'5 데미지. 폰이면 +6'},
+    kingarm:{name:'왕의 엄호',cost:1,kind:'king_block',base:4,near:10,type:'방어',rarity:'rare',class:'common',desc:'방어 4. 킹과 가까우면 방어 10'},
+    fissure:{name:'균열',cost:1,kind:'bleed',value:2,bleed:3,type:'제어',rarity:'rare',class:'common',desc:'2 데미지 + 매 턴 3 데미지'},
+    allout: {name:'총공세',cost:0,kind:'allout',per:4,type:'공격',rarity:'rare',class:'common',desc:'남은 에너지를 모두 써서 1당 4 데미지'},
+    shadow_step:{name:'그림자 발놀림',cost:0,kind:'draw_next_attack',draw:1,nextAttack:1,type:'순환',rarity:'common',class:'shadow',desc:'카드 1장 뽑기. 이번 턴 다음 공격 +1'},
+    bleed_cut:  {name:'출혈 베기',cost:1,kind:'bleed',value:3,bleed:2,type:'제어',rarity:'common',class:'shadow',desc:'3 데미지 + 매 턴 2 데미지'},
+    flank_order:{name:'협공 명령',cost:1,kind:'damage_adj',value:3,per:3,type:'진형',rarity:'common',class:'commander',desc:'3 데미지 + 인접 아군 1기당 3 데미지'},
+    hold_line:  {name:'전열 유지',cost:1,kind:'block_adj',value:4,per:2,type:'진형',rarity:'common',class:'commander',desc:'방어 4 + 인접 아군 1기당 방어 2'},
   },
   // 보유 카드 풀 (덱빌딩에서 이 수량 안에서 구성)
-  OWNED:{strike:6,guard:5,bash:3,check:3,support:4,legion:3,quick:3,tactics:2,focus:2,pierce:2,cripple:2,mend:2,phalanx:2,isolate:2,oath:3,kingarm:2,fissure:1,allout:1},
-  DEFAULT_DECK:{strike:3,guard:3,bash:1,check:1,support:2,legion:1,quick:1},
+  OWNED:{strike:6,guard:5,bash:3,check:3,support:4,legion:3,quick:3,tactics:2,focus:2,pierce:2,cripple:2,mend:2,phalanx:2,isolate:2,oath:3,kingarm:2,fissure:1,allout:1,shadow_step:2,bleed_cut:2,flank_order:2,hold_line:2},
+  DEFAULT_DECK:{strike:4,guard:4,bash:1,check:1,mend:1,tactics:1},
+  CHARACTERS:{
+    royal:{name:'왕실 기사',hp:27,tag:'기본형',desc:'패시브 없는 기준 캐릭터. 공격, 방어, 회복, 드로우를 고르게 사용합니다.',deck:{strike:4,guard:4,bash:1,check:1,mend:1,tactics:1}},
+    shadow:{name:'그림자 기사',hp:23,tag:'암살형',desc:'낮은 HP 대신 빠른 순환과 출혈 카드 2장으로 시작합니다.',deck:{strike:3,guard:3,quick:2,check:1,isolate:1,shadow_step:1,bleed_cut:1}},
+    commander:{name:'지휘 기사',hp:25,tag:'진형형',desc:'인접 아군을 활용하는 전용 카드 2장으로 진형 플레이를 시작합니다.',deck:{strike:3,guard:3,support:2,legion:2,flank_order:1,hold_line:1}},
+  },
   PRESET_DECKS:{
     assault:{name:'공격형',deck:{strike:3,bash:2,quick:2,focus:1,pierce:1,isolate:1,oath:1,allout:1}},
     formation:{name:'진형형',deck:{strike:2,guard:2,support:3,legion:2,phalanx:1,tactics:1,pierce:1}},
@@ -327,7 +347,7 @@ const CONFIG = {
    메타: 계정 · 저장
    ============================================================ */
 const LS_KEY='cardgame_account_v1';
-let account = { username:null, deck:{...CONFIG.DEFAULT_DECK} };
+let account = { username:null, character:'royal', deck:{...CONFIG.DEFAULT_DECK} };
 
 function saveAccount(){ try{ localStorage.setItem(LS_KEY, JSON.stringify(account)); }catch(e){/* 파일모드 등 폴백: 메모리 유지 */} }
 function loadAccount(user){
@@ -335,15 +355,22 @@ function loadAccount(user){
   return null;
 }
 const deckTotal = d=>Object.values(d).reduce((a,b)=>a+b,0);
+const activeCharacter=()=>CONFIG.CHARACTERS[account.character]||CONFIG.CHARACTERS.royal;
+const characterDeck=(id=account.character)=>CONFIG.CHARACTERS[id]?.deck||CONFIG.DEFAULT_DECK;
+const cardAllowed=(id,charId=account.character)=>{
+  const card=CONFIG.CARDS[id];
+  return !!card&&(card.class==='common'||card.class===charId);
+};
 const rarityLabel = r=>({common:'일반',uncommon:'전술',rare:'희귀'}[r]||'일반');
 const rarityClass = r=>r==='rare'?' rare':(r==='uncommon'?' uncommon':'');
 function cardMetaHtml(card){
-  return `<div class="meta"><span class="pill">${card.type||'전술'}</span><span class="pill${rarityClass(card.rarity)}">${rarityLabel(card.rarity)}</span></div>`;
+  const owner=card.class&&card.class!=='common'?`<span class="pill">${CONFIG.CHARACTERS[card.class]?.tag||'전용'}</span>`:'';
+  return `<div class="meta"><span class="pill">${card.type||'전술'}</span><span class="pill${rarityClass(card.rarity)}">${rarityLabel(card.rarity)}</span>${owner}</div>`;
 }
 function normalizeDeck(deck){
   const clean={}; let total=0;
   Object.entries(deck||{}).forEach(([id,n])=>{
-    if(!CONFIG.CARDS[id]||!CONFIG.OWNED[id])return;
+    if(!cardAllowed(id)||!CONFIG.OWNED[id])return;
     const max=Math.min(CONFIG.OWNED[id],CONFIG.MAX_COPIES_PER_CARD);
     const count=Math.max(0,Math.min(max,parseInt(n,10)||0));
     if(count>0&&total<CONFIG.DECK_SIZE){
@@ -352,7 +379,7 @@ function normalizeDeck(deck){
     }
   });
   if(total<CONFIG.DECK_SIZE){
-    Object.entries(CONFIG.DEFAULT_DECK).forEach(([id,n])=>{
+    Object.entries(characterDeck()).forEach(([id,n])=>{
       if(total>=CONFIG.DECK_SIZE)return;
       const max=Math.min(CONFIG.OWNED[id]||0,CONFIG.MAX_COPIES_PER_CARD);
       const cur=clean[id]||0;
@@ -364,7 +391,7 @@ function normalizeDeck(deck){
 }
 function deckIsLegal(deck){
   if(deckTotal(deck)!==CONFIG.DECK_SIZE)return false;
-  return Object.entries(deck).every(([id,n])=>CONFIG.CARDS[id]&&n>0&&n<=Math.min(CONFIG.OWNED[id]||0,CONFIG.MAX_COPIES_PER_CARD));
+  return Object.entries(deck).every(([id,n])=>cardAllowed(id)&&n>0&&n<=Math.min(CONFIG.OWNED[id]||0,CONFIG.MAX_COPIES_PER_CARD));
 }
 
 /* ---------- 화면 전환 ---------- */
@@ -378,10 +405,12 @@ function showScreen(id){
 function doLogin(user){
   account.username = user;
   const saved = loadAccount(user);
+  account.character = CONFIG.CHARACTERS[saved?.character] ? saved.character : 'royal';
   account.deck = normalizeDeck(saved ? saved.deck : CONFIG.DEFAULT_DECK);
   saveAccount();
   document.getElementById('acc-name').textContent=user;
   document.getElementById('acc-hello').textContent=`${user} 커맨더, 환영합니다`;
+  renderCharacterPicker();
   renderDeckSummary();
   showScreen('account');
 }
@@ -398,8 +427,25 @@ document.getElementById('btn-logout').addEventListener('click',()=>{ showScreen(
 /* ---------- 계정 → 덱 요약 ---------- */
 function renderDeckSummary(){
   const el=document.getElementById('acc-decksummary'); el.innerHTML='';
+  const ch=document.createElement('span'); ch.className='chip'; ch.innerHTML=`기사 <b>${activeCharacter().name}</b>`; el.appendChild(ch);
   Object.entries(account.deck).forEach(([id,n])=>{ if(n>0){ const c=document.createElement('span'); c.className='chip'; c.innerHTML=`${CONFIG.CARDS[id].name} <b>×${n}</b>`; el.appendChild(c);} });
   const t=document.createElement('span'); t.className='chip'; t.innerHTML=`합계 <b>${deckTotal(account.deck)}</b>/${CONFIG.DECK_SIZE}`; el.appendChild(t);
+}
+function renderCharacterPicker(){
+  const el=document.getElementById('chargrid'); if(!el)return; el.innerHTML='';
+  Object.entries(CONFIG.CHARACTERS).forEach(([id,ch])=>{
+    const b=document.createElement('button'); b.className='charbtn'+(account.character===id?' active':'');
+    b.innerHTML=`<strong>${ch.name} · ${ch.tag}</strong><span>HP ${ch.hp} · ${ch.desc}</span>`;
+    b.onclick=()=>{
+      if(account.character===id)return;
+      account.character=id;
+      account.deck=normalizeDeck(characterDeck(id));
+      saveAccount();
+      renderCharacterPicker();
+      renderDeckSummary();
+    };
+    el.appendChild(b);
+  });
 }
 document.getElementById('btn-todeck').addEventListener('click',()=>{ openDeckBuilder(); });
 document.getElementById('btn-play').addEventListener('click',()=>{ launchGame(); });
@@ -415,6 +461,9 @@ function renderDeckBuilder(){
   const cc=document.getElementById('deckcount'); cc.textContent=`${total} / ${CONFIG.DECK_SIZE}`;
   cc.className='count '+(total===CONFIG.DECK_SIZE?'ok':'bad');
   const presets=document.getElementById('presetlist'); presets.innerHTML='';
+  const start=document.createElement('button'); start.className='presetbtn'; start.textContent=`${activeCharacter().tag} 시작덱`;
+  start.onclick=()=>{draftDeck=normalizeDeck(characterDeck());document.getElementById('deck-msg').textContent='';renderDeckBuilder();};
+  presets.appendChild(start);
   Object.values(CONFIG.PRESET_DECKS).forEach(p=>{
     const b=document.createElement('button'); b.className='presetbtn'; b.textContent=p.name;
     b.onclick=()=>{draftDeck=normalizeDeck(p.deck);document.getElementById('deck-msg').textContent='';renderDeckBuilder();};
@@ -422,7 +471,7 @@ function renderDeckBuilder(){
   });
   // 풀
   const pg=document.getElementById('poolgrid'); pg.innerHTML='';
-  Object.entries(CONFIG.OWNED).forEach(([id,owned])=>{
+  Object.entries(CONFIG.OWNED).filter(([id])=>cardAllowed(id)).forEach(([id,owned])=>{
     const card=CONFIG.CARDS[id]; const inDeck=draftDeck[id]||0;
     const max=Math.min(owned,CONFIG.MAX_COPIES_PER_CARD);
     const el=document.createElement('div'); el.className='pcard';
@@ -442,7 +491,7 @@ function renderDeckBuilder(){
     dl.appendChild(row); });
   dl.querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{ const id=b.dataset.rm; draftDeck[id]=Math.max(0,(draftDeck[id]||0)-1); if(draftDeck[id]===0)delete draftDeck[id]; renderDeckBuilder(); });
 }
-document.getElementById('btn-defaultdeck').addEventListener('click',()=>{ draftDeck=normalizeDeck(CONFIG.DEFAULT_DECK); renderDeckBuilder(); document.getElementById('deck-msg').textContent=''; });
+document.getElementById('btn-defaultdeck').addEventListener('click',()=>{ draftDeck=normalizeDeck(characterDeck()); renderDeckBuilder(); document.getElementById('deck-msg').textContent=''; });
 document.getElementById('btn-savedeck').addEventListener('click',()=>{
   const total=deckTotal(draftDeck); const msg=document.getElementById('deck-msg');
   if(total!==CONFIG.DECK_SIZE){ msg.style.color='var(--enemy)'; msg.textContent=`덱은 정확히 ${CONFIG.DECK_SIZE}장이어야 합니다 (현재 ${total}장).`; return; }
@@ -479,7 +528,10 @@ let state={turn:0,combats:0,combatTurns:0,phase:'player',selected:null,over:fals
 function buildFromLayout(){
   pieces=[];monsters=[];let pid=0,mid=0;
   CONFIG.LAYOUT.forEach((row,r)=>[...row].forEach((ch,c)=>{
-    if('PBNRQK'.includes(ch))pieces.push({id:'p'+(pid++),kind:ch,hp:CONFIG.PIECE_HP[ch],max:CONFIG.PIECE_HP[ch],r,c,alive:true,hasMoved:false});
+    if('PBNRQK'.includes(ch)){
+      const max=ch==='K'?activeCharacter().hp:CONFIG.PIECE_HP[ch];
+      pieces.push({id:'p'+(pid++),kind:ch,hp:max,max,r,c,alive:true,hasMoved:false});
+    }
     else if('gwopbrnqX'.includes(ch)){const m=CONFIG.MONSTER[ch];monsters.push({id:'m'+(mid++),type:ch,name:m.name,hp:m.hp,max:m.hp,atk:m.atk,arch:m.arch,r,c,alive:true,hasMoved:false});}
   }));
 }
@@ -665,7 +717,7 @@ function startCombat(piece,mon,opts){
     ally:{hp:piece.hp,max:piece.max,block:0,kind:piece.kind},
     enemy:{hp:mon.hp,max:mon.max,name:mon.name,script:monDef.script,step:0},
     adj:adjacentAllies(piece.r,piece.c),
-    energy:CONFIG.ENERGY_PER_TURN,draw:shuffle(playerDeckFlat()),discard:[],hand:[],weaken:0,vulnerable:0,bleed:0,turn:1,over:false};
+    energy:CONFIG.ENERGY_PER_TURN,draw:shuffle(playerDeckFlat()),discard:[],hand:[],weaken:0,vulnerable:0,bleed:0,nextAttack:0,turn:1,over:false};
   cLogEl.innerHTML='';
   const initTxt=opts.initiator==='player'?'플레이어 공격':(opts.initiator==='siege'?'보스전(포위)':'상대 공격(수비)');
   cLog(`<span class="sys">— ${initTxt}: ${CB.ally.kind}(${CB.ally.hp}) vs ${CB.enemy.name}(${CB.enemy.hp}) · 인접 아군 ${CB.adj}기 —</span>`);
@@ -689,7 +741,7 @@ function cbDraw(n){for(let i=0;i<n;i++){if(CB.draw.length===0){if(CB.discard.len
 const cbAction=()=>CB.enemy.script[CB.enemy.step%CB.enemy.script.length];
 function kingDistance(){const k=pKing();return k?cheby(CB.piece.r,CB.piece.c,k.r,k.c):99;}
 function cbCardVal(card){
-  if(card.kind==='damage_adj'||card.kind==='block_adj')return card.per*CB.adj;
+  if(card.kind==='damage_adj'||card.kind==='block_adj')return (card.value||0)+card.per*CB.adj;
   if(card.kind==='phalanx')return card.block+card.per*CB.adj;
   if(card.kind==='isolated_damage')return CB.adj===0?card.solo:card.value;
   if(card.kind==='piece_damage')return CB.ally.kind===card.piece?card.value+card.bonus:card.value;
@@ -700,6 +752,7 @@ function cbCardVal(card){
 function cbPlay(idx){if(CB.over)return;const id=CB.hand[idx],card=CONFIG.CARDS[id];if(CB.energy<card.cost)return;CB.energy-=card.cost;const val=cbCardVal(card);
   if(card.kind==='damage'||card.kind==='damage_adj')cbDeal(val,card.name);
   else if(card.kind==='damage_draw'){cbDeal(val,card.name);cbDraw(card.draw||0);cLog(`<span class="sys">${card.name}: 카드 ${card.draw||0}장 뽑기</span>`);}
+  else if(card.kind==='draw_next_attack'){cbDraw(card.draw||0);CB.nextAttack+=card.nextAttack||0;cLog(`<span class="sys">${card.name}: 카드 ${card.draw||0}장 뽑기 · 다음 공격 +${card.nextAttack||0}</span>`);}
   else if(card.kind==='draw'){cbDraw(card.draw||0);cLog(`<span class="sys">${card.name}: 카드 ${card.draw||0}장 뽑기</span>`);}
   else if(card.kind==='energy'){CB.energy+=card.energy||0;cLog(`<span class="sys">${card.name}: 에너지 +${card.energy||0}</span>`);}
   else if(card.kind==='damage_weaken'){cbDeal(val,card.name);CB.weaken+=card.weaken;cLog(`<span class="en">${card.name}: 적 다음 공격 -${card.weaken}</span>`);}
@@ -711,7 +764,15 @@ function cbPlay(idx){if(CB.over)return;const id=CB.hand[idx],card=CONFIG.CARDS[i
   else if(card.kind==='bleed'){cbDeal(val,card.name);CB.bleed+=card.bleed||0;cLog(`<span class="dmg">${card.name}: 지속 피해 ${CB.bleed}</span>`);}
   else if(card.kind==='allout'){cbDeal(val,card.name);CB.energy=0;}
   CB.hand.splice(idx,1);CB.discard.push(id);if(CB.enemy.hp<=0){cbEnd(true);return;}cbRender();}
-function cbDeal(dmg,src){const bonus=CB.vulnerable||0;if(bonus>0){dmg+=bonus;CB.vulnerable=0;}CB.enemy.hp=Math.max(0,CB.enemy.hp-dmg);cLog(`<span class="dmg">${src}: ${dmg} 피해${bonus?` (취약 +${bonus})`:''} → ${CB.enemy.name} HP ${CB.enemy.hp}</span>`);cbFloat('enemy',`-${dmg}`);}
+function cbDeal(dmg,src){
+  const vuln=CB.vulnerable||0,next=CB.nextAttack||0;
+  if(vuln>0){dmg+=vuln;CB.vulnerable=0;}
+  if(next>0){dmg+=next;CB.nextAttack=0;}
+  CB.enemy.hp=Math.max(0,CB.enemy.hp-dmg);
+  const note=[vuln?`취약 +${vuln}`:'',next?`공격 보너스 +${next}`:''].filter(Boolean).join(' · ');
+  cLog(`<span class="dmg">${src}: ${dmg} 피해${note?` (${note})`:''} → ${CB.enemy.name} HP ${CB.enemy.hp}</span>`);
+  cbFloat('enemy',`-${dmg}`);
+}
 function cbEndTurn(){if(CB.over)return;CB.discard.push(...CB.hand);CB.hand=[];cbRender();cbEnemyTurn();}
 function cbEnemyTurn(){if(CB.over)return;const act=cbAction();
   if(act.atk!=null){let dmg=Math.max(0,act.atk-CB.weaken);CB.weaken=0;const blk=Math.min(CB.ally.block,dmg),thr=dmg-blk;CB.ally.block-=blk;CB.ally.hp=Math.max(0,CB.ally.hp-thr);
@@ -747,7 +808,7 @@ function cbRender(){
   document.getElementById('c-enemy-hp').style.width=(100*e.hp/e.max)+'%';
   document.getElementById('c-enemy-hptext').textContent=`${e.hp} / ${e.max} ❤`;
   const act=cbAction();const shown=Math.max(0,(act.atk||0)-(CB.weaken||0));
-  document.getElementById('c-intent').innerHTML=CB.over?'–':`⚔ 공격 ${shown}<small>다음 행동 예고${CB.weaken?` · 견제 -${CB.weaken}`:''}${CB.vulnerable?` · 다음 피해 +${CB.vulnerable}`:''}${CB.bleed?` · 지속 ${CB.bleed}`:''}</small>`;
+  document.getElementById('c-intent').innerHTML=CB.over?'–':`⚔ 공격 ${shown}<small>다음 행동 예고${CB.weaken?` · 견제 -${CB.weaken}`:''}${CB.vulnerable?` · 다음 피해 +${CB.vulnerable}`:''}${CB.nextAttack?` · 다음 공격 +${CB.nextAttack}`:''}${CB.bleed?` · 지속 ${CB.bleed}`:''}</small>`;
   document.getElementById('c-energy').textContent=`⚡ ${CB.energy} / ${CONFIG.ENERGY_PER_TURN}`;
   document.getElementById('c-piles').textContent=`뽑을 ${CB.draw.length} · 버림 ${CB.discard.length}`;
   const h=document.getElementById('c-hand');h.innerHTML='';
@@ -777,7 +838,7 @@ function initGame(){
   document.getElementById('combat').style.display='none';
   logEl.innerHTML='';CB=null;
   buildFromLayout();
-  log(`<span class="t">— ${account.username} 커맨더의 덱(${deckTotal(account.deck)}장)으로 시작 —</span>`);
+  log(`<span class="t">— ${account.username} 커맨더 · ${activeCharacter().name}의 덱(${deckTotal(account.deck)}장)으로 시작 —</span>`);
   render();
 }
 document.getElementById('btn-restartgame').addEventListener('click',initGame);
